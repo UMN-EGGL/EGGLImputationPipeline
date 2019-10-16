@@ -1,12 +1,5 @@
 FROM linkageio/dockerdev:latest
 
-# Install gcc
-USER root
-RUN apt-get install gcc zlib1g-dev libbz2-dev liblzma-dev --yes
-RUN apt-get install build-essential --yes
-RUN apt-get install sudo
-RUN echo "rob ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-
 USER rob 
 WORKDIR .local/src
 # install bcftools
@@ -29,4 +22,5 @@ RUN .conda/bin/conda install -c bioconda -c conda-forge snakemake --yes
 
 COPY Snakefile .
 
-ENTRYPOINT ["/bin/zsh"]
+CMD ["/usr/sbin/sshd", "-D"]
+
