@@ -27,7 +27,8 @@ caller = [
     'bcftools'
 ]
 feature = [
-    'snps_indels'
+    #'snps_indels',
+    'biallelic_snps'
 ]
 
 rule all:
@@ -37,14 +38,24 @@ rule all:
 rule phase_vcf:
     input:
         snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz')
-#    resources:
-#        phase_jobs=1
-    threads: 31
+    resources:
+        phase_jobs=1
+    threads: 32
     output:
         phased=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.phased.vcf.gz')
     shell: 
         '''
-            java -Xmx200g -jar .local/src/beagle.jar gt={input.snps}  out={output.phased} impute=true nthreads={threads} window=5 overlap=1
+            java -Xmx200g -jar .local/src/beagle.jar gt={input.snps} out={output.phased} impute=true nthreads={threads} window=10 overlap=1
+        '''
+
+rule filter_bi_allelic_SNP_joint_vcf:
+    input:
+        gvcf=S3.remote('mccue-lab/ibiodatatransfer2019/joint_{caller}/{contig}.gvcf.gz')
+    output: 
+        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.biallelic_snps.vcf.gz')
+    shell:
+        '''
+            .local/bin/bcftools view -m2 -M2 -v snps {input.gvcf} -o {output.snps} -O z    
         '''
 
 rule filter_SNP_INDELS_joint_vcf:

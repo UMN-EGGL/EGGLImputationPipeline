@@ -19,7 +19,6 @@ WORKDIR /home/rob
 RUN .conda/bin/conda install -c bioconda -c conda-forge snakemake --yes
 
 # Switch back to ROB
-
 COPY Snakefile .
 
 USER root
