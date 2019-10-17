@@ -1,4 +1,4 @@
-FROM linkageio/dockerdev:latest
+FROM linkageio/dockerdev:v0.1.0
 
 USER rob 
 WORKDIR .local/src
@@ -22,5 +22,7 @@ RUN .conda/bin/conda install -c bioconda -c conda-forge snakemake --yes
 
 COPY Snakefile .
 
+USER root
+EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D"]
 
