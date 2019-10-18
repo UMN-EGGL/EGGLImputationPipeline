@@ -43,9 +43,11 @@ rule phase_vcf:
     threads: 32
     output:
         phased=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.phased.vcf.gz')
+    params:
+        prefix='mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.phased'
     shell: 
         '''
-            java -Xmx200g -jar .local/src/beagle.jar gt={input.snps} out={output.phased} impute=true nthreads={threads} window=10 overlap=1
+            java -Xmx110g -jar .local/src/beagle.jar gt={input.snps} out={params.prefix} impute=true nthreads={threads} window=10 overlap=1
         '''
 
 rule filter_bi_allelic_SNP_joint_vcf:
