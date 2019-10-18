@@ -13,6 +13,8 @@ ENV PATH="$PATH:/home/rob/.local/bin"
 ENV BEAGLE="/home/rob/.local/src/beagle.jar"
 RUN sudo apt-get install openjdk-8-jre --yes
 
+# install python packages
+RUN pip install pandas
 
 WORKDIR /home/rob
 # Install snakemake 
