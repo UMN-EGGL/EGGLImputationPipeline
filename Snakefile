@@ -28,7 +28,8 @@ contigs = [
 #    'NC_009164_3','NC_009165_3','NC_009166_3',                                        
 #    'NC_009167_3','NC_009168_3','NC_009169_3',                                        
 #    'NC_009170_3','NC_009171_3','NC_009172_3',                                        
-     'NC_009173_3','NC_009174_3','NC_009175_3',                                        
+#    'NC_009173_3','NC_009174_3',
+     'NC_009175_3',                                        
 #     'unplaced'
 ] 
 caller = [
@@ -45,7 +46,7 @@ lsts = ['MNEc2M', 'MNEc670k', 'SNP70', 'SNP50']
 rule all:
     input:
         # Create the SNP LSTs
-        # S3.remote(expand('mccue-lab/Ec3Genomes/data/lsts/{LST}.lst',LST=lsts))
+        S3.remote(expand('mccue-lab/Ec3Genomes/data/lsts/{LST}.lst',LST=lsts)),
         # Create snps VCFs
         S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{lst}.{feature}.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts))
         #S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz',contig=contigs,caller=caller,feature=feature))
@@ -69,35 +70,29 @@ rule phase_vcf:
 
 rule subset_filter_bi_allelic_SNP_joint_vcf:
     input:
-        gvcf=S3.remote('mccue-lab/ibiodatatransfer2019/joint_{caller}/{contig}.gvcf.gz'),
-        lst = 'mccue-lab/Ec3Genomes/data/lsts/{lst}.lst'
+        gvcf=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz'),
+        lst = S3.remote('mccue-lab/Ec3Genomes/data/lsts/{lst}.lst')
     output: 
-        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{lst}.biallelic_snps.vcf.gz')
+        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.vcf.gz')
     shell:
         '''
-            .local/bin/bcftools view -m2 -M2 -v snps {input.gvcf} -R {input.lst} -o {output.snps} -O z    
+            .local/bin/bcftools view {input.gvcf} -R {input.lst} -o {output.snps} -O z    
         '''
 
-rule filter_bi_allelic_SNP_joint_vcf:
-    input:
-        gvcf=S3.remote('mccue-lab/ibiodatatransfer2019/joint_{caller}/{contig}.gvcf.gz'),
-    output: 
-        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.biallelic_snps.vcf.gz')
-    shell:
-        '''
-            .local/bin/bcftools view -m2 -M2 -v snps {input.gvcf} -o {output.snps} -O z    
-        '''
-
-
-rule filter_SNP_INDELS_joint_vcf:
+rule filter_feature_joint_vcf:
     input:
         gvcf=S3.remote('mccue-lab/ibiodatatransfer2019/joint_{caller}/{contig}.gvcf.gz')
     output: 
-        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.snps_indels.vcf.gz')
-    shell:
-        '''
-            .local/bin/bcftools view -m2 -v snps,indels {input.gvcf} -o {output.snps} -O z    
-        '''
+        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz')
+    run:
+        if wildcard.feature == 'snps_indels': 
+            run('''
+                .local/bin/bcftools view -m2 -v snps,indels {input.gvcf} -o {output.snps} -O z    
+            ''')
+        elif wildcard.feature == 'biallelic_snps':
+            run('''
+                .local/bin/bcftools view -m2 -M2 -v snps {input.gvcf} -o {output.snps} -O z    
+            ''')
 
 rule make_snp_lsts:
     '''
@@ -107,8 +102,8 @@ rule make_snp_lsts:
         snps = HTTP.remote('https://www.animalgenome.org/repository/pub/UMN2018.1003/{LST}.unique_remap.FINAL.csv.gz'),
         assembly = FTP.remote('ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/002/863/925/GCF_002863925.1_EquCab3.0/GCF_002863925.1_EquCab3.0_assembly_report.txt')
     output:
-        #lst = S3.remote('mccue-lab/Ec3Genomes/data/lsts/{LST}.lst')
-        lst = 'mccue-lab/Ec3Genomes/data/lsts/{LST}.lst'
+        lst = S3.remote('mccue-lab/Ec3Genomes/data/lsts/{LST}.lst')
+        #lst = 'mccue-lab/Ec3Genomes/data/lsts/{LST}.lst'
     run:
         import pandas as pd
         # Read in the assembly mapping
