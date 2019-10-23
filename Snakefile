@@ -18,17 +18,17 @@ HTTP = HTTPRemoteProvider()
 FTP = FTPRemoteProvider()
 
 contigs = [
-#    'NC_001640_1','NC_009144_3','NC_009145_3',                                        
-#    'NC_009146_3','NC_009147_3','NC_009148_3',                                        
-#    'NC_009149_3','NC_009150_3','NC_009151_3',                                        
-#    'NC_009152_3','NC_009153_3','NC_009154_3',                                        
-#    'NC_009155_3','NC_009156_3','NC_009157_3',                                        
-#    'NC_009158_3','NC_009159_3','NC_009160_3',                                        
-#    'NC_009161_3','NC_009162_3','NC_009163_3',                                        
-#    'NC_009164_3','NC_009165_3','NC_009166_3',                                        
-#    'NC_009167_3','NC_009168_3','NC_009169_3',                                        
-#    'NC_009170_3','NC_009171_3','NC_009172_3',                                        
-#    'NC_009173_3','NC_009174_3',
+     'NC_001640_1','NC_009144_3','NC_009145_3',                                        
+     'NC_009146_3','NC_009147_3','NC_009148_3',                                        
+     'NC_009149_3','NC_009150_3','NC_009151_3',                                        
+     'NC_009152_3','NC_009153_3','NC_009154_3',                                        
+     'NC_009155_3','NC_009156_3','NC_009157_3',                                        
+     'NC_009158_3','NC_009159_3','NC_009160_3',                                        
+     'NC_009161_3','NC_009162_3','NC_009163_3',                                        
+     'NC_009164_3','NC_009165_3','NC_009166_3',                                        
+     'NC_009167_3','NC_009168_3','NC_009169_3',                                        
+     'NC_009170_3','NC_009171_3','NC_009172_3',                                        
+     'NC_009173_3','NC_009174_3',
      'NC_009175_3',                                        
 #     'unplaced'
 ] 
@@ -37,32 +37,36 @@ caller = [
     'bcftools'
 ]
 feature = [
-    #'snps_indels',
+    'snps_indels',
     'biallelic_snps'
 ]
 
-lsts = ['MNEc2M', 'MNEc670k', 'SNP70', 'SNP50']
+lsts = [
+    'MNEc2M', 
+    'MNEc670k', 
+    'SNP70', 
+    'SNP50'
+]
 
 rule all:
     input:
         # Create the SNP LSTs
         S3.remote(expand('mccue-lab/Ec3Genomes/data/lsts/{LST}.lst',LST=lsts)),
         # Create snps VCFs
-        S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{lst}.{feature}.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts))
-        #S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz',contig=contigs,caller=caller,feature=feature))
+        S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts)),
         # Phase VCFs
-        #S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.phased.vcf.gz',contig=contigs,caller=caller,feature=feature))
+        S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.phased.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts))
 
 rule phase_vcf:
     input:
-        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz')
+        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.vcf.gz')
     resources:
         phase_jobs=1
-    threads: 32
+    threads: 10
     output:
-        phased=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.phased.vcf.gz')
+        phased=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.phased.vcf.gz')
     params:
-        prefix='mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.phased'
+        prefix='mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.phased'
     shell: 
         '''
             java -Xmx110g -jar .local/src/beagle.jar gt={input.snps} out={params.prefix} impute=true nthreads={threads} window=10 overlap=1
@@ -70,13 +74,24 @@ rule phase_vcf:
 
 rule subset_filter_bi_allelic_SNP_joint_vcf:
     input:
-        gvcf=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz'),
+        vcf = S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz'),
+        idx = S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz.csi'),
         lst = S3.remote('mccue-lab/Ec3Genomes/data/lsts/{lst}.lst')
     output: 
         snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.vcf.gz')
     shell:
         '''
-            .local/bin/bcftools view {input.gvcf} -R {input.lst} -o {output.snps} -O z    
+            .local/bin/bcftools view {input.vcf} -R {input.lst} -o {output.snps} -O z    
+        '''
+
+rule index_vcf:
+    input:
+        vcf=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz')
+    output:
+        idx=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz.csi')
+    shell:
+        '''
+            .local/bin/bcftools index {input.vcf}
         '''
 
 rule filter_feature_joint_vcf:
@@ -85,12 +100,12 @@ rule filter_feature_joint_vcf:
     output: 
         snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz')
     run:
-        if wildcard.feature == 'snps_indels': 
-            run('''
+        if wildcards.feature == 'snps_indels': 
+            shell('''
                 .local/bin/bcftools view -m2 -v snps,indels {input.gvcf} -o {output.snps} -O z    
             ''')
-        elif wildcard.feature == 'biallelic_snps':
-            run('''
+        elif wildcards.feature == 'biallelic_snps':
+            shell('''
                 .local/bin/bcftools view -m2 -M2 -v snps {input.gvcf} -o {output.snps} -O z    
             ''')
 
