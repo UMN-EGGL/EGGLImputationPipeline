@@ -18,19 +18,20 @@ HTTP = HTTPRemoteProvider()
 FTP = FTPRemoteProvider()
 
 contigs = [
-     'NC_001640_1','NC_009144_3','NC_009145_3',                                        
-     'NC_009146_3','NC_009147_3','NC_009148_3',                                        
-     'NC_009149_3','NC_009150_3','NC_009151_3',                                        
-     'NC_009152_3','NC_009153_3','NC_009154_3',                                        
-     'NC_009155_3','NC_009156_3','NC_009157_3',                                        
-     'NC_009158_3','NC_009159_3','NC_009160_3',                                        
-     'NC_009161_3','NC_009162_3','NC_009163_3',                                        
-     'NC_009164_3','NC_009165_3','NC_009166_3',                                        
-     'NC_009167_3','NC_009168_3','NC_009169_3',                                        
-     'NC_009170_3','NC_009171_3','NC_009172_3',                                        
-     'NC_009173_3','NC_009174_3',
-     'NC_009175_3',                                        
-#     'unplaced'
+    # Autosomes
+    'NC_009144_3','NC_009145_3','NC_009146_3', # chr1-3
+    'NC_009147_3','NC_009148_3','NC_009149_3', # chr4-6
+    'NC_009150_3','NC_009151_3','NC_009152_3', # chr7-9
+    'NC_009153_3','NC_009154_3','NC_009155_3', # chr10-12
+    'NC_009156_3','NC_009157_3','NC_009158_3', # chr13-15
+    'NC_009159_3','NC_009160_3','NC_009161_3', # chr16-18
+    'NC_009162_3','NC_009163_3','NC_009164_3', # chr19-21
+    'NC_009165_3','NC_009166_3','NC_009167_3', # chr22-24
+    'NC_009168_3','NC_009169_3','NC_009170_3', # chr25-27
+    'NC_009171_3','NC_009172_3','NC_009173_3', # chr28-30
+    'NC_009174_3','NC_009175_3',               # chr31-32                         
+   #'NC_001640_1',                             # Mitochindria
+   #'unplaced'                                 # Unplaced/Chrunk
 ] 
 caller = [
     'gatk',
@@ -53,23 +54,35 @@ rule all:
         # Create the SNP LSTs
         S3.remote(expand('mccue-lab/Ec3Genomes/data/lsts/{LST}.lst',LST=lsts)),
         # Create snps VCFs
-        S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts)),
+        S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts)),
         # Phase VCFs
-        S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.phased.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts))
+        S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.phased.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts))
 
 rule phase_vcf:
     input:
-        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.vcf.gz')
+        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.vcf.gz')
     resources:
         phase_jobs=1
     threads: 10
     output:
-        phased=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.phased.vcf.gz')
+        phased=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.phased.vcf.gz')
     params:
-        prefix='mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.phased'
+        prefix='mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.phased'
     shell: 
         '''
             java -Xmx110g -jar .local/src/beagle.jar gt={input.snps} out={params.prefix} impute=true nthreads={threads} window=10 overlap=1
+        '''
+
+rule prep_vcf:
+    input:
+        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.vcf.gz')
+    output:
+        snps=S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.vcf.gz')
+    params:
+        max_mem='2G'
+    shell:
+        '''
+            .local/bin/bcftools norm -m+any {input.snps} | .local/bin/bcftools sort -m {params.max_mem}  -o {output.snps} -O z
         '''
 
 rule subset_filter_bi_allelic_SNP_joint_vcf:
