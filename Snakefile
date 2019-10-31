@@ -54,9 +54,8 @@ rule all:
         # Create the SNP LSTs
         S3.remote(expand('mccue-lab/Ec3Genomes/data/lsts/{LST}.lst',LST=lsts)),
         # Create snps VCFs
-        S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts)),
+        expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.vcf.gz',caller=caller,maf=maf,contig=contigs)
         # Phase VCFs
-        S3.remote(expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.phased.vcf.gz',contig=contigs,caller=caller,feature=feature,lst=lsts))
 
 rule phase_vcf:
     input:
@@ -100,14 +99,18 @@ rule filter_feature_joint_vcf:
     input:
         gvcf = S3.remote('mccue-lab/ibiodatatransfer2019/joint_{caller}/{contig}.gvcf.gz')
     output: 
-        snps = S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.vcf.gz')
+        snps = 'mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.vcf.gz'
     params:
-        min_ac = '5' 
+        max_mem='2G'
     run:
-        shell('''
-            .local/bin/bcftools view -m2 -v snps,indels --min-ac {params.min_ac} {input.gvcf} | \
-            .local/bin/bcftools norm -m+any | \
-            .local/bin/bcftools sort -m {params.max_mem} -o {output.snps} -O z
+        if wildcards.maf == 'MAF01':
+            min_ac = 10
+        elif wildcards.maf == 'MAF005':
+            min_ac = 5
+        shell(f'''
+            .local/bin/bcftools view -m2 -v snps,indels --min-ac {min_ac} {{input.gvcf}} -Ou | \
+            .local/bin/bcftools norm -m+any -Ou | \
+            .local/bin/bcftools sort -m {{params.max_mem}} -O z -o {{output.snps}} 
         ''')
 
 rule make_snp_lsts:
