@@ -34,11 +34,11 @@ contigs = [
    #'unplaced'                                 # Unplaced/Chrunk
 ] 
 caller = [
-    'gatk',
+#   'gatk',
     'bcftools'
 ]
 maf = [
-    'MAF005',
+#    'MAF005',
     'MAF01'
 ]
 
@@ -63,14 +63,14 @@ rule phase_vcf:
         snps = 'mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.vcf.gz'
     resources:
         phase_jobs = 1
-    threads: 10
+    threads: 20
     output:
         phased = 'mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.phased.vcf.gz'
     params:
         prefix = 'mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.phased'
     shell: 
         '''
-            java -Xmx110g -jar .local/src/beagle.jar gt={input.snps} out={params.prefix} impute=true nthreads={threads} 
+            java -Xmx55g -jar .local/src/beagle.jar gt={input.snps} out={params.prefix} impute=true nthreads={threads} window=0.2 overlap=0.01 
         '''
 
 
@@ -105,11 +105,11 @@ rule filter_feature_joint_vcf:
         max_mem='2G'
     run:
         if wildcards.maf == 'MAF01':
-            min_ac = 10
+            min_af = '0.01'
         elif wildcards.maf == 'MAF005':
-            min_ac = 5
+            min_af = '0.005'
         shell(f'''
-            .local/bin/bcftools view -m2 -v snps,indels --min-ac {min_ac} {{input.gvcf}} -Ou | \
+            .local/bin/bcftools view -m2 -v snps,indels --min-ac 50 --min-af {min_af} {{input.gvcf}} -Ou | \
             .local/bin/bcftools norm -m+any -Ou | \
             .local/bin/bcftools sort -m {{params.max_mem}} -O z -o {{output.snps}} 
         ''')
