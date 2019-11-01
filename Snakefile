@@ -54,22 +54,23 @@ rule all:
         # Create the SNP LSTs
         S3.remote(expand('mccue-lab/Ec3Genomes/data/lsts/{LST}.lst',LST=lsts)),
         # Create snps VCFs
-        expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.vcf.gz',caller=caller,maf=maf,contig=contigs)
+        expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.vcf.gz',caller=caller,maf=maf,contig=contigs),
         # Phase VCFs
+        expand('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.phased.vcf.gz',caller=caller,maf=maf,contig=contigs)
 
 rule phase_vcf:
     input:
-        snps = S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.vcf.gz')
+        snps = 'mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.vcf.gz'
     resources:
         phase_jobs = 1
     threads: 10
     output:
-        phased = S3.remote('mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.phased.vcf.gz')
+        phased = 'mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.phased.vcf.gz'
     params:
-        prefix = 'mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{contig}.{feature}.{lst}.sorted.phased'
+        prefix = 'mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.phased'
     shell: 
         '''
-            java -Xmx110g -jar .local/src/beagle.jar gt={input.snps} out={params.prefix} impute=true nthreads={threads} window=10 overlap=1
+            java -Xmx110g -jar .local/src/beagle.jar gt={input.snps} out={params.prefix} impute=true nthreads={threads} 
         '''
 
 
