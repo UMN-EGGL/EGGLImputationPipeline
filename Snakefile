@@ -70,7 +70,7 @@ rule phase_vcf:
         prefix = 'mccue-lab/Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}.phased'
     shell: 
         '''
-            java -Xmx55g -jar .local/src/beagle.jar gt={input.snps} out={params.prefix} impute=true nthreads={threads} window=0.2 overlap=0.01 
+            java -Xmx110g -jar .local/src/beagle.jar gt={input.snps} out={params.prefix} impute=true nthreads={threads} window=0.1 overlap=0.01 
         '''
 
 
