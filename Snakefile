@@ -34,11 +34,11 @@ contigs = [
    #'unplaced'                                 # Unplaced/Chrunk
 ] 
 caller = [
-#   'gatk',
+#    'gatk',
     'bcftools'
 ]
 maf = [
-#    'MAF005',
+    'MAF005',
     'MAF01'
 ]
 
