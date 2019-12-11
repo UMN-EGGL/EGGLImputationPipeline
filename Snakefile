@@ -17,6 +17,8 @@ S3 = S3RemoteProvider(
 HTTP = HTTPRemoteProvider()
 FTP = FTPRemoteProvider()
 
+BUCKET = 'Ec3Genomes' 
+
 samples = [ 
     'A1543', 'A2068', 'A2071', 'A2085', 'A4416', 'A5659', 'A5964', 'ADM9', 'ADR419', 'ADR420', 'ADR421', 'ADR422', 'ADR423', 'ADR424', 'ADR425', 'ARAB0016A', 'ARAB0017A', 'ARAB0018A', 'ARAB0019A', 
     'ARAB0020A', 'ARAB0034A', 'ARAB0035A', 'ARAB0036A', 'ARAB0132A', 'ARAB0133A', 'ARAB0134A', 'ARAB0135A', 'ARAB0136A', 'ARAB0141A', 'BAVA0183A', 'BROOKS2174', 'BROOKS3147', 'BROOKS3148', 'BW01', 
@@ -54,90 +56,178 @@ samples = [
 
 contigs = [
     # Autosomes
-    'NC_009144_3','NC_009145_3','NC_009146_3', # chr1-3
-    'NC_009147_3','NC_009148_3','NC_009149_3', # chr4-6
-    'NC_009150_3','NC_009151_3','NC_009152_3', # chr7-9
-    'NC_009153_3','NC_009154_3','NC_009155_3', # chr10-12
-    'NC_009156_3','NC_009157_3','NC_009158_3', # chr13-15
-    'NC_009159_3','NC_009160_3','NC_009161_3', # chr16-18
-    'NC_009162_3','NC_009163_3','NC_009164_3', # chr19-21
-    'NC_009165_3','NC_009166_3','NC_009167_3', # chr22-24
-    'NC_009168_3','NC_009169_3','NC_009170_3', # chr25-27
-    'NC_009171_3','NC_009172_3','NC_009173_3', # chr28-30
-    'NC_009174_3','NC_009175_3',               # chr31-32                         
+   #'NC_009144_3','NC_009145_3','NC_009146_3', # chr1-3
+   #'NC_009147_3','NC_009148_3','NC_009149_3', # chr4-6
+   #'NC_009150_3','NC_009151_3','NC_009152_3', # chr7-9
+   # 'NC_009153_3','NC_009154_3',
+    'NC_009155_3', # chr10-12
+   #'NC_009156_3','NC_009157_3','NC_009158_3', # chr13-15
+   #'NC_009159_3','NC_009160_3','NC_009161_3', # chr16-18
+   #'NC_009162_3','NC_009163_3','NC_009164_3', # chr19-21
+   #'NC_009165_3','NC_009166_3','NC_009167_3', # chr22-24
+   #'NC_009168_3','NC_009169_3','NC_009170_3', # chr25-27
+   #'NC_009171_3','NC_009172_3','NC_009173_3', # chr28-30
+   #'NC_009174_3','NC_009175_3',               # chr31-32                         
    #'NC_001640_1',                             # Mitochindria
    #'unplaced'                                 # Unplaced/Chrunk
 ] 
 caller = [
-#   'gatk',
-    'bcftools'
+    'gatk',
+#   'bcftools'
 ]
 maf = [
-#   'MAF01',
-    'MAF005'
+    'MAF01',
+#   'MAF005'
+]
+
+fltr = [
+    'biallelic'
+]
+
+lsts = [
+    'MNEc2M', 
+    'MNEc670k', 
+    'SNP70', 
+    'SNP50'
 ]
 
 rule all:
     input:
+        # reference FNA
+        ancient(S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna')),
         # Create snps VCFs
- #       S3.remote(expand('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vcf.gz',caller=caller,maf=maf,contig=contigs)),
-        S3.remote(expand('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/by_sample/{sample}.vcf.gz',caller=caller,maf=maf,contig=contigs,sample=samples)),
-        # Calculate Stats
-      # S3.remote(expand('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vchk',caller=caller,maf=maf,contig=contigs)),
+        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr))),
+        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,lst=lsts))),
+        # LSTs
+        ancient(S3.remote(expand(f'{BUCKET}/data/lsts/{{lst}}.lst',lst=lsts))),
+        # Recals
+        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal',caller=caller,maf=maf,contig=contigs,fltr=fltr,lst=lsts))),
 
-
-rule push_split_vcf:
+rule recalibrate_vcf:
     input:
-         'Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/by_sample/{sample}.vcf.gz'
+        vcf    = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz'),
+        vcfidx = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz.tbi'),
+        mnec2m = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/MNEc2M.vcf.gz'),
+        index  = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/MNEc2M.vcf.gz.tbi'),
+        fna    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna'),
+        fai    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai'),
+        fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
     output:
-         S3.remote('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/by_sample/{sample}.vcf.gz') 
+        recal    = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal'),
+        tranches = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.tranches'),
+        plots    = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.plots'),
+    shell:
+        '''
+        gatk VariantRecalibrator \
+        -R {input.fna} \
+        -V {input.vcf} \
+        --resource:MNEc2M,known=false,training=true,truth=true,prior=15.0 {input.mnec2m} \
+        -an QD -an MQ -an MQRankSum -an ReadPosRankSum -an FS -an SOR \
+        -mode SNP \
+        -O {output.recal} \
+        --tranches-file {output.tranches} \
+        --rscript-file  {output.plots}
+        '''    
+
+rule subset_ALL_vcf:
+    input:
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz'),
+        idx = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz.csi'),
+        lst = S3.remote(f'{BUCKET}/data/lsts/{{lst}}.lst')
+    output: 
+        snps=S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz')
+    shell:
+        '''
+            bcftools view {input.vcf} -R {input.lst} -o {output.snps} -O z    
+
+        '''
+
+rule index_subset_vcf:
+    input:
+        vcf   = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz')
+    output:
+        index = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz.tbi')
+    shell:  
+        '''
+            gatk IndexFeatureFile -I {input.vcf} -O {output.index}
+        '''
+
+rule index_vcf:
+    input:
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{xxx}}.vcf.gz')
+    output:
+        idx  = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{xxx}}.vcf.gz.csi')
+    shell:
+        '''
+            bcftools index {input.vcf} -o {output.idx}
+        '''
+
+rule filter_joint_vcf:
+    input:
+        gvcf = S3.remote(f'mccue-lab/ibiodatatransfer2019/joint_{{caller}}/{{contig}}.gvcf.gz')
+    output: 
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz')
     resources:
-        max_vcf = 1
+        max_gvcf = 1
+    params:
+        max_mem =  '2G'
     run:
-        shell('''
-            cp input[0] output[0]
+        if wildcards.maf == 'MAF01':
+            min_af = '0.01'
+        elif wildcards.maf == 'MAF005':
+            min_af = '0.005'
+        shell(f'''
+            bcftools view -m2 -M2 -v snps,indels --min-ac 50 --min-af {min_af} {{input.gvcf}} -Ou | \
+            bcftools norm -m+any -Ou | \
+            bcftools sort -m {{params.max_mem}} -O z -o {{output.vcf}} 
         ''')
 
-#rule split_vcf_samples:
-#    input:
-#        vcf = S3.remote('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vcf.gz')
-#    output:
-#        expand('Ec3Genomes/data/vcfs/joint/{{caller}}/{{maf}}/{{contig}}/by_sample/{sample}.vcf.gz',sample=samples)
-#    params:
-#        outdir = 'Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/by_sample'
-#    run:
-#        shell(f'''
-#            .local/bin/bcftools +split {{input.vcf}} -Oz -o {{params.outdir}}
-#        ''')
+rule make_snp_lsts:
+    '''
+        good for: LST = [MNEc2M, MNEc670k, SNP70, SNP50]
+    '''
+    input:
+        snps = HTTP.remote('https://www.animalgenome.org/repository/pub/UMN2018.1003/{LST}.unique_remap.FINAL.csv.gz'),
+        assembly = FTP.remote('ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/002/863/925/GCF_002863925.1_EquCab3.0/GCF_002863925.1_EquCab3.0_assembly_report.txt')
+    output:
+        lst = S3.remote(f'{BUCKET}/data/lsts/{{LST}}.lst')
+    run:
+        import pandas as pd
+        # Read in the assembly mapping
+        assembly = pd.read_table(input.assembly ,comment='#', header=None) 
+        chrmap =  {x:y for x,y in zip(assembly[0].values, assembly[6].values)}
+        # I have NO idea why the HTTP remote returns a list ...
+        df = pd.read_table(input.snps[0],sep=',')
+        
+        def map_chrom(x): 
+            'maps the chromosome name in the Beeson et al file to the Ec3 RefSeq file'
+            if x in chrmap:
+                return chrmap[x]
+            elif x.startswith('chrUn_ref'):
+                return x.replace('chrUn_ref|','').replace('|','')
+            else:
+                raise ValueError
+        
+        # Add the refeseq chromosomes names to each  
 
-#rule calculate_vcf_stats:
-#    input:
-#        vcf = S3.remote('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vcf.gz')
-#    output:
-#        stats = S3.remote('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vchk')
-#    resources:
-#        max_vcf = 1
-#    run:
-#        shell(f'''
-#            .local/bin/bcftools stats {{input.vcf}} > {{output.stats}} 
-#        ''')
+        df['CHR'] = [map_chrom(x) for x in df.EC3_chrom]
+        df['POS'] = df.EC3_pos
+            
+        # Output the LSTs file
+        df.loc[:,['CHR','POS']].to_csv(output.lst,index=False,header=None,sep='\t')
 
-#rule filter_joint_vcf:
-#    input:
-#        gvcf = S3.remote('mccue-lab/ibiodatatransfer2019/joint_{caller}/{contig}.gvcf.gz')
-#    output: 
-#        vcf = S3.remote('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vcf.gz')
-#    resources:
-#        max_gvcf = 1
-#    params:
-#        max_mem =  '2G'
-#    run:
-#        if wildcards.maf == 'MAF01':
-#            min_af = '0.01'
-#        elif wildcards.maf == 'MAF005':
-#            min_af = '0.005'
-#        shell(f'''
-#            .local/bin/bcftools view -m2 -v snps,indels --min-ac 50 --min-af {min_af} {{input.gvcf}} -Ou | \
-#            .local/bin/bcftools norm -m+any -Ou | \
-#            .local/bin/bcftools sort -m {{params.max_mem}} -O z -o {{output.vcf}} 
-#        ''')
+rule move_ref_genome_dict:
+    input:
+        fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.dict')
+    output:
+        fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
+    shell:
+        'cp {input[0]} {output[0]}'
+
+rule move_ref_genome:
+    input:
+        S3.remote('mccue-lab/ibiodatatransfer2019/GCF_002863925.1_EquCab3.0_genomic/{fna}')
+    output:
+        S3.remote(f'{BUCKET}/data/fna/{{fna}}')
+    shell:
+        'cp {input[0]} {output[0]}'
