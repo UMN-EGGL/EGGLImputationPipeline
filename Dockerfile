@@ -32,7 +32,7 @@ RUN .conda/bin/pip install pandas
 RUN .conda/bin/conda install -c bioconda -c conda-forge snakemake --yes
 
 # Switch back to ROB
-COPY Snakefile .
+COPY --chown=rob:rob Snakefile .
 
 USER root
 EXPOSE 22
