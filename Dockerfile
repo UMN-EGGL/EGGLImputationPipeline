@@ -15,13 +15,15 @@ RUN sudo apt-get install openjdk-8-jre --yes
 
 # Download and install GATK
 RUN wget https://github.com/broadinstitute/gatk/releases/download/4.1.4.1/gatk-4.1.4.1.zip
-
 RUN sudo apt-get install unzip
-
 RUN unzip -o gatk-4.1.4.1.zip
 ENV GATK_LOCAL_JAR="/home/rob/.local/src/gatk-4.1.4.1/gatk-package-4.1.4.1-local.jar"
 RUN ln -f -s /home/rob/.local/src/gatk-4.1.4.1/gatk /home/rob/.local/bin/gatk
 
+# We need R for the VariantRecalibrator
+#RUN sudo apt-get install libgeos-dev libudunits2-dev libcurl4-openssl-dev --yes
+#RUN sudo apt-get install base-r
+#RUN R -e "install.packages('ggplot3',dependencies=TRUE, repos='http://cran.rstudio.com/')"
 
 WORKDIR /home/rob
 
