@@ -80,10 +80,10 @@ maf = [
 rule all:
     input:
         # Create snps VCFs
- #       S3.remote(expand('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vcf.gz',caller=caller,maf=maf,contig=contigs)),
+#       S3.remote(expand('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vcf.gz',caller=caller,maf=maf,contig=contigs)),
         S3.remote(expand('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/by_sample/{sample}.vcf.gz',caller=caller,maf=maf,contig=contigs,sample=samples)),
         # Calculate Stats
-      # S3.remote(expand('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vchk',caller=caller,maf=maf,contig=contigs)),
+#       S3.remote(expand('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vchk',caller=caller,maf=maf,contig=contigs)),
 
 
 rule push_split_vcf:
@@ -122,22 +122,22 @@ rule push_split_vcf:
 #            .local/bin/bcftools stats {{input.vcf}} > {{output.stats}} 
 #        ''')
 
-#rule filter_joint_vcf:
-#    input:
-#        gvcf = S3.remote('mccue-lab/ibiodatatransfer2019/joint_{caller}/{contig}.gvcf.gz')
-#    output: 
-#        vcf = S3.remote('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vcf.gz')
-#    resources:
-#        max_gvcf = 1
-#    params:
-#        max_mem =  '2G'
-#    run:
-#        if wildcards.maf == 'MAF01':
-#            min_af = '0.01'
-#        elif wildcards.maf == 'MAF005':
-#            min_af = '0.005'
-#        shell(f'''
-#            .local/bin/bcftools view -m2 -v snps,indels --min-ac 50 --min-af {min_af} {{input.gvcf}} -Ou | \
-#            .local/bin/bcftools norm -m+any -Ou | \
-#            .local/bin/bcftools sort -m {{params.max_mem}} -O z -o {{output.vcf}} 
-#        ''')
+rule filter_joint_vcf:
+    input:
+        gvcf = S3.remote('mccue-lab/ibiodatatransfer2019/joint_{caller}/{contig}.gvcf.gz')
+    output: 
+        vcf = S3.remote('Ec3Genomes/data/vcfs/joint/{caller}/{maf}/{contig}/ALL.vcf.gz')
+    resources:
+        max_gvcf = 1
+    params:
+        max_mem =  '2G'
+    run:
+        if wildcards.maf == 'MAF01':
+            min_af = '0.01'
+        elif wildcards.maf == 'MAF005':
+            min_af = '0.005'
+        shell(f'''
+            .local/bin/bcftools view -m2 -v snps,indels --min-ac 50 --min-af {min_af} {{input.gvcf}} -Ou | \
+            .local/bin/bcftools norm -m+any -Ou | \
+            .local/bin/bcftools sort -m {{params.max_mem}} -O z -o {{output.vcf}} 
+        ''')
