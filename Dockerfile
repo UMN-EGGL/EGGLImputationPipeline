@@ -21,10 +21,12 @@ ENV GATK_LOCAL_JAR="/home/rob/.local/src/gatk-4.1.4.1/gatk-package-4.1.4.1-local
 RUN ln -f -s /home/rob/.local/src/gatk-4.1.4.1/gatk /home/rob/.local/bin/gatk
 
 # We need R for the VariantRecalibrator
-#RUN sudo apt-get install libgeos-dev libudunits2-dev libcurl4-openssl-dev --yes
-#RUN sudo apt-get install base-r
-#RUN R -e "install.packages('ggplot3',dependencies=TRUE, repos='http://cran.rstudio.com/')"
+USER root
+ENV TZ=Europe/Minsk
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+RUN apt-get install r-cran-tidyverse --yes
 
+USER rob
 WORKDIR /home/rob
 
 # install python packages
