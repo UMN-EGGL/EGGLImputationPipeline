@@ -11,22 +11,26 @@ S3 = GSRemoteProvider()
 HTTP = HTTPRemoteProvider()
 FTP = FTPRemoteProvider()
 
-BUCKET = 'ec3genomesv2' 
-
+BUCKET = 'ec3genomes' 
 
 contigs = [
     # Autosomes
     'NC_009144_3', 'NC_009145_3','NC_009146_3', # chr1-3
     'NC_009147_3','NC_009148_3','NC_009149_3', # chr4-6
-    'NC_009150_3','NC_009151_3','NC_009152_3', # chr7-9
-    'NC_009153_3','NC_009154_3','NC_009155_3', # chr10-12
-    'NC_009156_3','NC_009157_3','NC_009158_3', # chr13-15
-    'NC_009159_3','NC_009160_3','NC_009161_3', # chr16-18
-    'NC_009162_3','NC_009163_3','NC_009164_3', # chr19-21
-    'NC_009165_3','NC_009166_3','NC_009167_3', # chr22-24
-    'NC_009168_3','NC_009169_3','NC_009170_3', # chr25-27
-    'NC_009171_3','NC_009172_3','NC_009173_3', # chr28-30
-    'NC_009174_3','NC_009175_3',               # chr31-32                         
+
+   #'NC_009150_3','NC_009151_3','NC_009152_3', # chr7-9
+   #'NC_009153_3','NC_009154_3','NC_009155_3', # chr10-12
+
+   #'NC_009156_3','NC_009157_3','NC_009158_3', # chr13-15
+   #'NC_009159_3','NC_009160_3','NC_009161_3', # chr16-18
+
+   #'NC_009162_3','NC_009163_3','NC_009164_3', # chr19-21
+   #'NC_009165_3','NC_009166_3','NC_009167_3', # chr22-24
+
+   #'NC_009168_3','NC_009169_3','NC_009170_3', # chr25-27
+   #'NC_009171_3','NC_009172_3','NC_009173_3', # chr28-30
+   #'NC_009174_3','NC_009175_3',               # chr31-32                         
+
    #'NC_001640_1',                             # Mitochindria
    #'unplaced'                                 # Unplaced/Chrunk
 ] 
@@ -60,16 +64,15 @@ vqsr = [
 rule all:
     input:
         # reference FNA
-       #ancient(S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna')),
+        ancient(S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna')),
         # Create snps VCFs
         ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr))),
-        #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,lst=lsts))),
         # LSTs
-       #ancient(S3.remote(expand(f'{BUCKET}/data/lsts/{{lst}}.lst',lst=lsts))),
+        ancient(S3.remote(expand(f'{BUCKET}/data/lsts/{{lst}}.lst',lst=lsts))),
         # Recals
-       #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
+        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
         # Phased
-        #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR.PASS.phased.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr))),
+        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
 
 rule phase_VQSRPassed_vcf:
     input:
@@ -78,11 +81,11 @@ rule phase_VQSRPassed_vcf:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz'),
     params:
         prefix = f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased',
-        window = 0.5,
-        overlap = 0.05,
-        mem = '110g'
+        window = 0.25,
+        overlap = 0.025,
+        mem = '60g'
     resources:
-        phase_jobs = 1
+        mem_gb = 60
     threads: 8
     shell:
         '''
@@ -95,7 +98,6 @@ rule phase_VQSRPassed_vcf:
                 overlap={params.overlap}
         '''
 
-
 rule filter_VQSR_passed:
     input:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/ALL.vcf.gz'),
@@ -103,8 +105,8 @@ rule filter_VQSR_passed:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz'),
     shell:
         '''
-        bcftools view -f PASS {input.vcf} -Ou |\
-        bcftools annotate -x ^INFO/VQSLOD,^FORMAT/GT -O z -o {output.vcf}
+            bcftools view -f PASS {input.vcf} -Ou |\
+            bcftools annotate -x ^INFO/VQSLOD,^FORMAT/GT -O z -o {output.vcf}
         '''
 
 rule apply_VQSR_filters_vcf:
@@ -125,8 +127,6 @@ rule apply_VQSR_filters_vcf:
         fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
     output:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/ALL.vcf.gz'),
-    resources:
-        max_vcf = 1
     run:
         vqsr = int(wildcards.vqsr)
         if vqsr > 100:
@@ -134,14 +134,14 @@ rule apply_VQSR_filters_vcf:
         else:
             vqsr = vqsr
         shell(f'''
-        gatk ApplyVQSR \
-        -R {{input.fna}} \
-        -V {{input.vcf}} \
-        --truth-sensitivity-filter-level {vqsr} \
-        --tranches-file {{input.tranches}} \
-        --recal-file {{input.recal}} \
-        -mode SNP \
-        -O {{output.vcf}} 
+            gatk ApplyVQSR \
+            -R {{input.fna}} \
+            -V {{input.vcf}} \
+            --truth-sensitivity-filter-level {vqsr} \
+            --tranches-file {{input.tranches}} \
+            --recal-file {{input.recal}} \
+            -mode SNP \
+            -O {{output.vcf}} 
         ''')
 
 rule recalibrate_bcftoolk_vcf:
@@ -160,26 +160,24 @@ rule recalibrate_bcftoolk_vcf:
         plotspdf  = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.plots.pdf'),
         tranches  = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches'),
         tranchpdf = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches.pdf'),
-    resources:
-        max_vcf = 1
     shell:
         '''
-        gatk VariantRecalibrator \
-        -R {input.fna} \
-        -V {input.vcf} \
-        --resource:MNEc2M,known=false,training=true,truth=true,prior=15.0 {input.mnec2m} \
-        -an DP \
-        -an RPB \
-        -an MQB \
-        -an BQB \
-        -an MQSB \
-        -an SGB \
-        -mode SNP \
-        --max-gaussians 4 \
-        -tranche 100.0 -tranche 99.9 -tranche 99.0 -tranche 95.0 -tranche 90.0 \
-        -O {output.recal} \
-        --tranches-file {output.tranches} \
-        --rscript-file  {output.plots}
+            gatk VariantRecalibrator \
+            -R {input.fna} \
+            -V {input.vcf} \
+            --resource:MNEc2M,known=false,training=true,truth=true,prior=15.0 {input.mnec2m} \
+            -an DP \
+            -an RPB \
+            -an MQB \
+            -an BQB \
+            -an MQSB \
+            -an SGB \
+            -mode SNP \
+            --max-gaussians 4 \
+            -tranche 100.0 -tranche 99.9 -tranche 99.0 -tranche 95.0 -tranche 90.0 \
+            -O {output.recal} \
+            --tranches-file {output.tranches} \
+            --rscript-file  {output.plots}
         '''    
 
 rule recalibrate_gatk_vcf:
@@ -198,26 +196,24 @@ rule recalibrate_gatk_vcf:
         plotspdf  = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.plots.pdf'),
         tranches  = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches'),
         tranchpdf = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches.pdf'),
-    resources:
-        max_vcf = 1
     shell:
         '''
-        gatk VariantRecalibrator \
-        -R {input.fna} \
-        -V {input.vcf} \
-        --resource:MNEc2M,known=false,training=true,truth=true,prior=15.0 {input.mnec2m} \
-        -an DP \
-        -an QD \
-        -an MQ \
-        -an ReadPosRankSum \
-        -an FS \
-        -an SOR \
-        -mode SNP \
-        --max-gaussians 4 \
-        -tranche 100.0 -tranche 99.9 -tranche 99.0 -tranche 95.0 -tranche 90.0 \
-        -O {output.recal} \
-        --tranches-file {output.tranches} \
-        --rscript-file  {output.plots}
+            gatk VariantRecalibrator \
+            -R {input.fna} \
+            -V {input.vcf} \
+            --resource:MNEc2M,known=false,training=true,truth=true,prior=15.0 {input.mnec2m} \
+            -an DP \
+            -an QD \
+            -an MQ \
+            -an ReadPosRankSum \
+            -an FS \
+            -an SOR \
+            -mode SNP \
+            --max-gaussians 4 \
+            -tranche 100.0 -tranche 99.9 -tranche 99.0 -tranche 95.0 -tranche 90.0 \
+            -O {output.recal} \
+            --tranches-file {output.tranches} \
+            --rscript-file  {output.plots}
         '''    
 
 rule subset_ALL_vcf:
@@ -263,9 +259,10 @@ rule filter_joint_vcf_biallelic:
     output: 
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/biallelic/{{maf}}/{{contig}}/ALL.vcf.gz')
     resources:
-        max_gvcf = 1
+        disk_gb = 500,
+        mem_gb = 60
     params:
-        max_mem =  '2G'
+        max_mem =  '60G'
     run:
         if wildcards.maf == 'MAF01':
             min_af = '0.01'
@@ -283,9 +280,10 @@ rule filter_joint_vcf_biallelic_minaf:
     output: 
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/biallelic_minaf/{{maf}}/{{contig}}/ALL.vcf.gz')
     resources:
-        max_gvcf = 1
+        disk_gb = 500,
+        mem_gb = 60
     params:
-        max_mem =  '2G'
+        max_mem =  '60G'
     run:
         if wildcards.maf == 'MAF01':
             min_af = '0.01'
