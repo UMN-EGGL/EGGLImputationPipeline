@@ -56,11 +56,10 @@ samples = [
 
 contigs = [
     # Autosomes
-   #'NC_009144_3','NC_009145_3','NC_009146_3', # chr1-3
+    'NC_009144_3',#'NC_009145_3','NC_009146_3', # chr1-3
    #'NC_009147_3','NC_009148_3','NC_009149_3', # chr4-6
    #'NC_009150_3','NC_009151_3','NC_009152_3', # chr7-9
-   # 'NC_009153_3','NC_009154_3',
-    'NC_009155_3', # chr10-12
+   #'NC_009153_3','NC_009154_3','NC_009155_3', # chr10-12
    #'NC_009156_3','NC_009157_3','NC_009158_3', # chr13-15
    #'NC_009159_3','NC_009160_3','NC_009161_3', # chr16-18
    #'NC_009162_3','NC_009163_3','NC_009164_3', # chr19-21
@@ -72,12 +71,12 @@ contigs = [
    #'unplaced'                                 # Unplaced/Chrunk
 ] 
 caller = [
-    'gatk',
-#   'bcftools'
+#   'gatk',
+    'bcftools'
 ]
 maf = [
-    'MAF01',
-#   'MAF005'
+#   'MAF01',
+    'MAF005'
 ]
 
 fltr = [
@@ -86,9 +85,15 @@ fltr = [
 
 lsts = [
     'MNEc2M', 
-    'MNEc670k', 
-    'SNP70', 
-    'SNP50'
+#   'MNEc670k', 
+#   'SNP70', 
+#   'SNP50'
+]
+
+vqsr = [
+#   '100',
+    '995',
+#   '99',
 ]
 
 rule all:
@@ -97,33 +102,158 @@ rule all:
         ancient(S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna')),
         # Create snps VCFs
         ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr))),
-        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,lst=lsts))),
+        #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,lst=lsts))),
         # LSTs
         ancient(S3.remote(expand(f'{BUCKET}/data/lsts/{{lst}}.lst',lst=lsts))),
         # Recals
-        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal',caller=caller,maf=maf,contig=contigs,fltr=fltr,lst=lsts))),
+        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
+        # Phased
+        #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR.PASS.phased.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr))),
 
-rule recalibrate_vcf:
+rule phase_VQSRPassed_vcf:
     input:
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz'),
+    output:
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz'),
+    params:
+        prefix = f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased',
+        window = 0.5,
+        overlap = 0.05,
+        mem = '110g'
+    resources:
+        phase_jobs = 1
+    threads: 8
+    shell:
+        '''
+            java -Xmx{params.mem} -jar $HOME/.local/src/beagle.jar \
+                gt={input.vcf} \
+                out={params.prefix} \
+                impute=true \
+                nthreads={threads} \
+                window={params.window} \
+                overlap={params.overlap}
+        '''
+
+
+rule filter_VQSR_passed:
+    input:
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/ALL.vcf.gz'),
+    output:
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz'),
+    shell:
+        '''
+        bcftools view -f PASS {input.vcf} -Ou |\
+        bcftools annotate -x ^INFO/VQSLOD,^FORMAT/GT -O z -o {output.vcf}
+        '''
+
+rule apply_VQSR_filters_vcf:
+    input:
+        # VCF 
         vcf    = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz'),
         vcfidx = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz.tbi'),
-        mnec2m = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/MNEc2M.vcf.gz'),
-        index  = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/MNEc2M.vcf.gz.tbi'),
+        # Recalibration input
+        recal     = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal'),
+        recalidx  = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.idx'),
+        plots     = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.plots'),
+        plotspdf  = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.plots.pdf'),
+        tranches  = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches'),
+        tranchpdf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches.pdf'),
+        # Refgen 
         fna    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna'),
         fai    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai'),
         fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
     output:
-        recal    = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.recal'),
-        tranches = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.tranches'),
-        plots    = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.plots'),
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/ALL.vcf.gz'),
+    resources:
+        max_vcf = 1
+    run:
+        vqsr = int(wildcards.vqsr)
+        if vqsr > 100:
+            vqsr = vqsr / 10
+        else:
+            vqsr = vqsr
+        shell(f'''
+        gatk ApplyVQSR \
+        -R {{input.fna}} \
+        -V {{input.vcf}} \
+        --truth-sensitivity-filter-level {vqsr} \
+        --tranches-file {{input.tranches}} \
+        --recal-file {{input.recal}} \
+        -mode SNP \
+        -O {{output.vcf}} 
+        ''')
+
+rule recalibrate_bcftoolk_vcf:
+    input:
+        vcf    = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz'),
+        vcfidx = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz.tbi'),
+        mnec2m = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/MNEc2M.lst.vcf.gz'),
+        index  = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/MNEc2M.lst.vcf.gz.tbi'),
+        fna    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna'),
+        fai    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai'),
+        fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
+    output:
+        recal     = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.recal'),
+        recalidx  = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.idx'),
+        plots     = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.plots'),
+        plotspdf  = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.plots.pdf'),
+        tranches  = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches'),
+        tranchpdf = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches.pdf'),
+    resources:
+        max_vcf = 1
     shell:
         '''
         gatk VariantRecalibrator \
         -R {input.fna} \
         -V {input.vcf} \
         --resource:MNEc2M,known=false,training=true,truth=true,prior=15.0 {input.mnec2m} \
-        -an QD -an MQ -an MQRankSum -an ReadPosRankSum -an FS -an SOR \
+        -an DP \
+        -an RPB \
+        -an MQB \
+        -an BQB \
+        -an MQSB \
+        -an SGB \
         -mode SNP \
+        --max-gaussians 4 \
+        -tranche 100.0 -tranche 99.9 -tranche 99.0 -tranche 95.0 -tranche 90.0 \
+        -O {output.recal} \
+        --tranches-file {output.tranches} \
+        --rscript-file  {output.plots}
+        '''    
+
+rule recalibrate_gatk_vcf:
+    input:
+        vcf    = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz'),
+        vcfidx = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz.tbi'),
+        mnec2m = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/MNEc2M.lst.vcf.gz'),
+        index  = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/MNEc2M.lst.vcf.gz.tbi'),
+        fna    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna'),
+        fai    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai'),
+        fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
+    output:
+        recal     = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.recal'),
+        recalidx  = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.idx'),
+        plots     = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.plots'),
+        plotspdf  = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.plots.pdf'),
+        tranches  = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches'),
+        tranchpdf = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/ALL.recal.tranches.pdf'),
+    resources:
+        max_vcf = 1
+    shell:
+        '''
+        gatk VariantRecalibrator \
+        -R {input.fna} \
+        -V {input.vcf} \
+        --resource:MNEc2M,known=false,training=true,truth=true,prior=15.0 {input.mnec2m} \
+        -an DP \
+        -an QD \
+        -an MQ \
+        -an ReadPosRankSum \
+        -an FS \
+        -an SOR \
+        -mode SNP \
+        --max-gaussians 4 \
+        -tranche 100.0 -tranche 99.9 -tranche 99.0 -tranche 95.0 -tranche 90.0 \
         -O {output.recal} \
         --tranches-file {output.tranches} \
         --rscript-file  {output.plots}
@@ -135,7 +265,7 @@ rule subset_ALL_vcf:
         idx = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz.csi'),
         lst = S3.remote(f'{BUCKET}/data/lsts/{{lst}}.lst')
     output: 
-        snps=S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz')
+        snps=S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.lst.vcf.gz')
     shell:
         '''
             bcftools view {input.vcf} -R {input.lst} -o {output.snps} -O z    
@@ -209,7 +339,6 @@ rule make_snp_lsts:
                 raise ValueError
         
         # Add the refeseq chromosomes names to each  
-
         df['CHR'] = [map_chrom(x) for x in df.EC3_chrom]
         df['POS'] = df.EC3_pos
             
