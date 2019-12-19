@@ -215,7 +215,7 @@ rule subset_ALL_vcf:
         idx = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz.csi'),
         lst = S3.remote(f'{BUCKET}/data/lsts/{{lst}}.lst')
     output: 
-        snps=S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.lst.vcf.gz')
+        snps=S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.lst.vcf.gz',keep_local=True)
     shell:
         '''
             bcftools view {input.vcf} -R {input.lst} -o {output.snps} -O z    
@@ -225,7 +225,7 @@ rule index_subset_vcf:
     input:
         vcf   = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz')
     output:
-        index = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz.tbi')
+        index = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{lst}}.vcf.gz.tbi',keep_local=True)
     shell:  
         '''
             gatk IndexFeatureFile -I {input.vcf} -O {output.index}
@@ -235,7 +235,7 @@ rule index_vcf:
     input:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{xxx}}.vcf.gz')
     output:
-        idx  = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{xxx}}.vcf.gz.csi')
+        idx  = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/{{xxx}}.vcf.gz.csi',keep_local=True)
     shell:
         '''
             bcftools index {input.vcf} -o {output.idx}
@@ -299,7 +299,7 @@ rule make_snp_lsts:
         snps = HTTP.remote('https://www.animalgenome.org/repository/pub/UMN2018.1003/{LST}.unique_remap.FINAL.csv.gz'),
         assembly = FTP.remote('ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/002/863/925/GCF_002863925.1_EquCab3.0/GCF_002863925.1_EquCab3.0_assembly_report.txt')
     output:
-        lst = S3.remote(f'{BUCKET}/data/lsts/{{LST}}.lst')
+        lst = S3.remote(f'{BUCKET}/data/lsts/{{LST}}.lst',keep_local=True)
     run:
         import pandas as pd
         # Read in the assembly mapping
@@ -333,7 +333,7 @@ rule move_ref_genome_dict:
     input:
         fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.dict')
     output:
-        fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
+        fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict',keep_local=True)
     shell:
         'cp {input[0]} {output[0]}'
 
@@ -341,6 +341,6 @@ rule move_ref_genome:
     input:
         S3.remote('mccue-lab/ibiodatatransfer2019/GCF_002863925.1_EquCab3.0_genomic/{fna}')
     output:
-        S3.remote(f'{BUCKET}/data/fna/{{fna}}')
+        S3.remote(f'{BUCKET}/data/fna/{{fna}}',keep_local=True)
     shell:
         'cp {input[0]} {output[0]}'
