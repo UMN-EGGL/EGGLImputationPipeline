@@ -15,28 +15,21 @@ BUCKET = 'ec3genomes'
 
 contigs = [
     # Autosomes
-    'NC_009144_3', 'NC_009145_3','NC_009146_3', # chr1-3
-    'NC_009147_3','NC_009148_3','NC_009149_3', # chr4-6
-
-   #'NC_009150_3','NC_009151_3','NC_009152_3', # chr7-9
-   #'NC_009153_3','NC_009154_3','NC_009155_3', # chr10-12
-
-   #'NC_009156_3','NC_009157_3','NC_009158_3', # chr13-15
-   #'NC_009159_3','NC_009160_3','NC_009161_3', # chr16-18
-
-   #'NC_009162_3','NC_009163_3','NC_009164_3', # chr19-21
-   #'NC_009165_3','NC_009166_3','NC_009167_3', # chr22-24
-
-   #'NC_009168_3','NC_009169_3','NC_009170_3', # chr25-27
-   #'NC_009171_3','NC_009172_3','NC_009173_3', # chr28-30
-   #'NC_009174_3','NC_009175_3',               # chr31-32                         
+    'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
+   #'NC_009149_3','NC_009149_3','NC_009150_3','NC_009151_3', #chr5-8
+   #'NC_009152_3','NC_009153_3','NC_009154_3','NC_009155_3', #chr9-12
+   #'NC_009156_3','NC_009157_3','NC_009158_3','NC_009159_3', #chr13-16
+   #'NC_009160_3','NC_009161_3','NC_009162_3','NC_009163_3', #chr17-20
+   #'NC_009164_3','NC_009165_3','NC_009166_3','NC_009167_3', #chr21-24
+   #'NC_009168_3','NC_009169_3','NC_009170_3','NC_009171_3', #chr25-28
+   #'NC_009172_3','NC_009173_3','NC_009174_3','NC_009175_3', #chr29-32    
 
    #'NC_001640_1',                             # Mitochindria
    #'unplaced'                                 # Unplaced/Chrunk
 ] 
 caller = [
     'gatk',
-#   'bcftools'
+    'bcftools'
 ]
 maf = [
 #   'MAF01',
@@ -72,7 +65,7 @@ rule all:
         # Recals
         ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
         # Phased
-        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
+        #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
 
 rule phase_VQSRPassed_vcf:
     input:
@@ -83,9 +76,9 @@ rule phase_VQSRPassed_vcf:
         prefix = f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased',
         window = 0.25,
         overlap = 0.025,
-        mem = '60g'
+        mem = '50g'
     resources:
-        mem_gb = 60
+        mem_gb = 50
     threads: 8
     shell:
         '''
@@ -174,7 +167,7 @@ rule recalibrate_bcftoolk_vcf:
             -an SGB \
             -mode SNP \
             --max-gaussians 4 \
-            -tranche 100.0 -tranche 99.9 -tranche 99.0 -tranche 95.0 -tranche 90.0 \
+            -tranche 100.0 -tranche 99.9 -tranche 99.5 -tranche 99.0 -tranche 95.0 \
             -O {output.recal} \
             --tranches-file {output.tranches} \
             --rscript-file  {output.plots}
@@ -210,7 +203,7 @@ rule recalibrate_gatk_vcf:
             -an SOR \
             -mode SNP \
             --max-gaussians 4 \
-            -tranche 100.0 -tranche 99.9 -tranche 99.0 -tranche 95.0 -tranche 90.0 \
+            -tranche 100.0 -tranche 99.9 -tranche 99.5 -tranche 99.0 -tranche 95.0 \
             -O {output.recal} \
             --tranches-file {output.tranches} \
             --rscript-file  {output.plots}
@@ -226,7 +219,6 @@ rule subset_ALL_vcf:
     shell:
         '''
             bcftools view {input.vcf} -R {input.lst} -o {output.snps} -O z    
-
         '''
 
 rule index_subset_vcf:
@@ -260,9 +252,9 @@ rule filter_joint_vcf_biallelic:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/biallelic/{{maf}}/{{contig}}/ALL.vcf.gz')
     resources:
         disk_gb = 500,
-        mem_gb = 60
+        mem_gb = 50
     params:
-        max_mem =  '60G'
+        max_mem =  '50G'
     run:
         if wildcards.maf == 'MAF01':
             min_af = '0.01'
@@ -281,9 +273,9 @@ rule filter_joint_vcf_biallelic_minaf:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/biallelic_minaf/{{maf}}/{{contig}}/ALL.vcf.gz')
     resources:
         disk_gb = 500,
-        mem_gb = 60
+        mem_gb = 50
     params:
-        max_mem =  '60G'
+        max_mem =  '50G'
     run:
         if wildcards.maf == 'MAF01':
             min_af = '0.01'

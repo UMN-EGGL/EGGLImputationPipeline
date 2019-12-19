@@ -45,6 +45,6 @@ RUN .conda/bin/conda install -c bioconda -c conda-forge snakemake --yes
 COPY --chown=rob:rob Snakefile .
 
 USER root
-EXPOSE 22
-CMD ["/usr/sbin/sshd", "-D"]
+EXPOSE 50000
+CMD ["/usr/sbin/sshd", "-D","-p","50000"]
 
