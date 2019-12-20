@@ -1,50 +1,43 @@
-FROM linkageio/dockerdev:v0.2.0
+FROM ubuntu:19.10
 
-USER rob 
-WORKDIR .local/src
-# install bcftools
-RUN wget https://github.com/samtools/bcftools/releases/download/1.9/bcftools-1.9.tar.bz2
-RUN tar xvvf bcftools-1.9.tar.bz2
-RUN cd bcftools-1.9 && ./configure --prefix=/home/rob/.local && make && make install
+ENV HOME=/root
+RUN mkdir -p $HOME/.local/src
+WORKDIR $HOME/.local/src
 
-# Download Beagle
-RUN curl http://faculty.washington.edu/browning/beagle/beagle.21Sep19.ec3.jar -o /home/rob/.local/src/beagle.jar
-ENV PATH="$PATH:/home/rob/.local/bin"
-ENV BEAGLE="/home/rob/.local/src/beagle.jar"
-RUN sudo apt-get install openjdk-8-jre --yes
-
-# Download and install GATK
-RUN wget https://github.com/broadinstitute/gatk/releases/download/4.1.4.1/gatk-4.1.4.1.zip
-RUN sudo apt-get install unzip
-RUN unzip -o gatk-4.1.4.1.zip
-ENV GATK_LOCAL_JAR="/home/rob/.local/src/gatk-4.1.4.1/gatk-package-4.1.4.1-local.jar"
-RUN ln -f -s /home/rob/.local/src/gatk-4.1.4.1/gatk /home/rob/.local/bin/gatk
+RUN apt-get update && apt-get upgrade --yes
+RUN apt-get install curl wget \
+    openjdk-8-jre \
+    gcc zlib1g-dev libbz2-dev liblzma-dev \
+    build-essential \
+    unzip --yes
 
 # We need R for the VariantRecalibrator
-USER root
 ENV TZ=Europe/Minsk
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt-get install r-cran-tidyverse --yes
 
-USER rob
-WORKDIR /home/rob
+# install bcftools
+RUN wget https://github.com/samtools/bcftools/releases/download/1.9/bcftools-1.9.tar.bz2 \
+    && tar xvvf bcftools-1.9.tar.bz2 \
+    && cd bcftools-1.9 \
+    && ./configure --prefix=$HOME/.local && make && make install
+ENV PATH="$PATH:$HOME/.local/bin"
 
-# Install gcloud
-RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-RUN sudo apt-get install apt-transport-https ca-certificates gnupg --yes
-RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
-RUN sudo apt-get update && sudo apt-get install google-cloud-sdk --yes
+# Download Beagle
+RUN curl http://faculty.washington.edu/browning/beagle/beagle.21Sep19.ec3.jar -o $HOME/.local/src/beagle.jar
+ENV BEAGLE_JAR="$HOME/.local/src/beagle.jar"
 
-# install python packages
-RUN .conda/bin/conda install pip
-RUN .conda/bin/pip install pandas
+# Download and install GATK
+RUN wget https://github.com/broadinstitute/gatk/releases/download/4.1.4.1/gatk-4.1.4.1.zip \
+    && unzip -o gatk-4.1.4.1.zip
+ENV GATK_LOCAL_JAR="$HOME/.local/src/gatk-4.1.4.1/gatk-package-4.1.4.1-local.jar"
+RUN ln -f -s $HOME/.local/src/gatk-4.1.4.1/gatk $HOME/.local/bin/gatk
+
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+RUN sh Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/.conda
+ENV PATH="$PATH:$HOME/.conda/bin"
 # Install snakemake 
-RUN .conda/bin/conda install -c bioconda -c conda-forge snakemake --yes
+RUN conda install -c bioconda -c conda-forge snakemake --yes
 
-# Switch back to ROB
-COPY --chown=rob:rob Snakefile .
-
-USER root
-EXPOSE 50000
-CMD ["/usr/sbin/sshd", "-D","-p","50000"]
-
+WORKDIR $HOME
+COPY  Snakefile .
