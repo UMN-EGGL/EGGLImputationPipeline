@@ -13,9 +13,11 @@ FTP = FTPRemoteProvider()
 
 BUCKET = 'ec3genomes' 
 
-contigs = [
+contigs = config['contigs'].split(',')
+
+#contigs = [
     # Autosomes
-    'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
+   #'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
    #'NC_009149_3','NC_009149_3','NC_009150_3','NC_009151_3', #chr5-8
    #'NC_009152_3','NC_009153_3','NC_009154_3','NC_009155_3', #chr9-12
    #'NC_009156_3','NC_009157_3','NC_009158_3','NC_009159_3', #chr13-16
@@ -26,7 +28,7 @@ contigs = [
 
    #'NC_001640_1',                             # Mitochindria
    #'unplaced'                                 # Unplaced/Chrunk
-] 
+#] 
 caller = [
     'gatk',
     'bcftools'
@@ -56,8 +58,6 @@ vqsr = [
 
 rule all:
     input:
-        # reference FNA
-        ancient(S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna')),
         # Create snps VCFs
         ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr))),
         # LSTs
@@ -82,7 +82,7 @@ rule phase_VQSRPassed_vcf:
     threads: 8
     shell:
         '''
-            java -Xmx{params.mem} -jar $HOME/.local/src/beagle.jar \
+            java -Xmx{params.mem} -jar $BEAGLE_JAR \
                 gt={input.vcf} \
                 out={params.prefix} \
                 impute=true \
@@ -251,10 +251,10 @@ rule filter_joint_vcf_biallelic:
     output: 
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/biallelic/{{maf}}/{{contig}}/ALL.vcf.gz')
     resources:
-        disk_gb = 500,
-        mem_gb = 50
+        disk_gb = 100,
+        mem_gb = 10
     params:
-        max_mem =  '50G'
+        max_mem =  '10G'
     run:
         if wildcards.maf == 'MAF01':
             min_af = '0.01'
@@ -272,10 +272,10 @@ rule filter_joint_vcf_biallelic_minaf:
     output: 
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/biallelic_minaf/{{maf}}/{{contig}}/ALL.vcf.gz')
     resources:
-        disk_gb = 500,
-        mem_gb = 50
+        disk_gb = 100,
+        mem_gb = 10
     params:
-        max_mem =  '50G'
+        max_mem =  '10G'
     run:
         if wildcards.maf == 'MAF01':
             min_af = '0.01'
