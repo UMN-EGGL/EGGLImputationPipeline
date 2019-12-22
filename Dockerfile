@@ -32,12 +32,19 @@ RUN wget https://github.com/broadinstitute/gatk/releases/download/4.1.4.1/gatk-4
     && unzip -o gatk-4.1.4.1.zip
 ENV GATK_LOCAL_JAR="$HOME/.local/src/gatk-4.1.4.1/gatk-package-4.1.4.1-local.jar"
 RUN ln -f -s $HOME/.local/src/gatk-4.1.4.1/gatk $HOME/.local/bin/gatk
+# Download and instakk GATK 3.8 (for CombineVariants)
+RUN curl 'https://software.broadinstitute.org/gatk/download/auth?package=GATK-archive&version=3.8-1-0-gf15c1c3ef' --output 'GenomeAnalysisTK-3.8-1-0-gf15c1c3ef.tar.bz2'
+RUN tar xvvf GenomeAnalysisTK-3.8-1-0-gf15c1c3ef.tar.bz2
+ENV GATK3_JAR="$HOME/.local/src/GenomeAnalysisTK-3.8-1-0-gf15c1c3ef/GenomeAnalysisTK.jar"
 
+# Download and install conda
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 RUN sh Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/.conda
 ENV PATH="$PATH:$HOME/.conda/bin"
 # Install snakemake 
 RUN conda install -c bioconda -c conda-forge snakemake --yes
 
+
 WORKDIR $HOME
 COPY  Snakefile .
+
