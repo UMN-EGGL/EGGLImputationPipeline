@@ -13,22 +13,20 @@ FTP = FTPRemoteProvider()
 
 BUCKET = 'ec3genomes' 
 
-contigs = config['contigs'].split(',')
-
-#contigs = [
+contigs = [
     # Autosomes
-   #'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
-   #'NC_009149_3','NC_009149_3','NC_009150_3','NC_009151_3', #chr5-8
-   #'NC_009152_3','NC_009153_3','NC_009154_3','NC_009155_3', #chr9-12
-   #'NC_009156_3','NC_009157_3','NC_009158_3','NC_009159_3', #chr13-16
-   #'NC_009160_3','NC_009161_3','NC_009162_3','NC_009163_3', #chr17-20
-   #'NC_009164_3','NC_009165_3','NC_009166_3','NC_009167_3', #chr21-24
-   #'NC_009168_3','NC_009169_3','NC_009170_3','NC_009171_3', #chr25-28
-   #'NC_009172_3','NC_009173_3','NC_009174_3','NC_009175_3', #chr29-32    
+    'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
+    'NC_009149_3','NC_009149_3','NC_009150_3','NC_009151_3', #chr5-8
+    'NC_009152_3','NC_009153_3','NC_009154_3','NC_009155_3', #chr9-12
+    'NC_009156_3','NC_009157_3','NC_009158_3','NC_009159_3', #chr13-16
+    'NC_009160_3','NC_009161_3','NC_009162_3','NC_009163_3', #chr17-20
+    'NC_009164_3','NC_009165_3','NC_009166_3','NC_009167_3', #chr21-24
+    'NC_009168_3','NC_009169_3','NC_009170_3','NC_009171_3', #chr25-28
+    'NC_009172_3','NC_009173_3','NC_009174_3','NC_009175_3', #chr29-32    
 
    #'NC_001640_1',                             # Mitochindria
    #'unplaced'                                 # Unplaced/Chrunk
-#] 
+] 
 caller = [
     'gatk',
     'bcftools'
@@ -40,7 +38,6 @@ maf = [
 
 fltr = [
     'biallelic',
-#   'biallelic_minaf'
 ]
 
 lsts = [
@@ -245,11 +242,11 @@ rule index_vcf:
 #-                        Create different starting SNP sets                 -#
 #-----------------------------------------------------------------------------#
 
-rule filter_joint_vcf_biallelic:
+rule filter_joint_bcftools_biallelic:
     input:
-        gvcf = S3.remote(f'mccue-lab/ibiodatatransfer2019/joint_{{caller}}/{{contig}}.gvcf.gz')
+        gvcf = S3.remote(f'mccue-lab/ibiodatatransfer2019/joint_bcftools/{{contig}}.gvcf.gz')
     output: 
-        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/biallelic/{{maf}}/{{contig}}/ALL.vcf.gz')
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/biallelic/{{maf}}/{{contig}}/ALL.vcf.gz')
     resources:
         disk_gb = 100,
         mem_gb = 10
@@ -266,26 +263,27 @@ rule filter_joint_vcf_biallelic:
             bcftools sort -m {{params.max_mem}} -O z -o {{output.vcf}} 
         ''')
 
-rule filter_joint_vcf_biallelic_minaf:
+rule filter_joint_gatk_biallelic:
     input:
-        gvcf = S3.remote(f'mccue-lab/ibiodatatransfer2019/joint_{{caller}}/{{contig}}.gvcf.gz')
+        gvcf = S3.remote(f'mccue-lab/ibiodatatransfer2019/joint_gatk/{{contig}}.gvcf.gz')
     output: 
-        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/biallelic_minaf/{{maf}}/{{contig}}/ALL.vcf.gz')
+        vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/biallelic/{{maf}}/{{contig}}/ALL.vcf.gz')
     resources:
-        disk_gb = 100,
-        mem_gb = 10
+        disk_gb = 500,
+        mem_gb = 50
     params:
-        max_mem =  '10G'
+        max_mem =  '50G'
     run:
         if wildcards.maf == 'MAF01':
             min_af = '0.01'
         elif wildcards.maf == 'MAF005':
             min_af = '0.005'
         shell(f'''
-            bcftools view -m2 -M2 -v snps,indels --min-ac 50 --min-af {min_af} {{input.gvcf}} -Ou | \
+            bcftools view -m2 -M2 -v snps,indels --min-af {min_af} {{input.gvcf}} -Ou | \
             bcftools norm -m+any -Ou | \
             bcftools sort -m {{params.max_mem}} -O z -o {{output.vcf}} 
         ''')
+
 
 #-----------------------------------------------------------------------------#
 #-                           Create Legacy SNP lists                         -#
