@@ -1,0 +1,9 @@
+setup.py
+watchdog/__init__.py
+watchdog/watcher.py
+watchdog.egg-info/PKG-INFO
+watchdog.egg-info/SOURCES.txt
+watchdog.egg-info/dependency_links.txt
+watchdog.egg-info/entry_points.txt
+watchdog.egg-info/requires.txt
+watchdog.egg-info/top_level.txt

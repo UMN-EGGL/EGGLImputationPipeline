@@ -1,0 +1,20 @@
+beagle.21Sep19.ec3.jar (version 5.1)
+Copyright (C) 2014-2019 Brian L. Browning
+Enter "java -jar beagle.21Sep19.ec3.jar" to list command line argument
+Start time: 10:36 AM CST on 23 Dec 2019
+
+Command line: java -Xmx27305m -jar beagle.21Sep19.ec3.jar
+  gt=NC_009155_3.PASS.vcf.gz
+  out=phased
+  impute=true
+  window=0.01
+  overlap=0.001
+  nthreads=4
+
+No genetic map is specified: using 1 cM = 1 Mb
+
+Reference samples:           0
+Study samples:             549
+
+Window 1 (NC_009155.3:83-9914)
+Study markers:             218
