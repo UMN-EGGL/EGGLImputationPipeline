@@ -13,6 +13,7 @@ FTP = FTPRemoteProvider()
 
 BUCKET = 'ec3genomes' 
 
+
 contigs = [
     # Autosomes
     'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
@@ -22,7 +23,8 @@ contigs = [
     'NC_009160_3','NC_009161_3','NC_009162_3','NC_009163_3', #chr17-20
     'NC_009164_3','NC_009165_3','NC_009166_3','NC_009167_3', #chr21-24
     'NC_009168_3','NC_009169_3','NC_009170_3','NC_009171_3', #chr25-28
-    'NC_009172_3','NC_009173_3','NC_009174_3','NC_009175_3', #chr29-32    
+    'NC_009172_3','NC_009173_3','NC_009174_3',
+    'NC_009175_3', #chr29-32    
 
    #'NC_001640_1',                             # Mitochindria
    #'unplaced'                                 # Unplaced/Chrunk
@@ -53,16 +55,13 @@ vqsr = [
 #   '99',
 ]
 
+singularity: "gcr.io/minus80/ec3genomes:v0.4.0"
+
 rule all:
     input:
-        # Create snps VCFs
-        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/ALL.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr))),
-        # LSTs
-        ancient(S3.remote(expand(f'{BUCKET}/data/lsts/{{lst}}.lst',lst=lsts))),
-        # Recals
-        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
+        #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
         # Phased
-        #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
+        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
 
 rule phase_VQSRPassed_vcf:
     input:
@@ -71,22 +70,60 @@ rule phase_VQSRPassed_vcf:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz'),
     params:
         prefix = f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased',
-        window = 0.25,
-        overlap = 0.025,
+        window = 0.05,
+        overlap = 0.005,
         mem = '50g'
     resources:
         mem_gb = 50
-    threads: 8
+    threads: 7
+    run:
+        from watchdog import watch_process  
+
+        backoff = False
+        while True:
+                       
+            if backoff:
+                # If we are backing off, we need to filter the SNPs in the bad
+                # window
+
+            else:
+                input_vcf = input.vcf  
+
+            cmd = ' '.split(f'''
+                java -Xmx{params.mem} -jar $BEAGLE_JAR \
+                    gt={input.vcf} \
+                    out={params.prefix} \
+                    impute=true \
+                    nthreads={threads} \
+                    window={params.window} \
+                    overlap={params.overlap}
+            ''')
+
+            
+            
+
+rule combine_gatk_bcftools_vcfs:
+    input:
+        gatk_vcf     = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz'),
+        gatk_idx     = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.tbi'),
+        bcftools_vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz'),
+        bcftools_idx = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.tbi'),
+        fna    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna'),
+        fai    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai'),
+        fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
+    output:
+        merged_vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz')
     shell:
-        '''
-            java -Xmx{params.mem} -jar $BEAGLE_JAR \
-                gt={input.vcf} \
-                out={params.prefix} \
-                impute=true \
-                nthreads={threads} \
-                window={params.window} \
-                overlap={params.overlap}
-        '''
+        f''' 
+        java -jar $GATK3_JAR \
+            -T CombineVariants \
+            -R {{input.fna}} \
+            --variant:gatk {{input.gatk_vcf}} \
+            --variant:bcftools {{input.bcftools_vcf}} \
+            -o {{output.merged_vcf}} \
+            -genotypeMergeOptions PRIORITIZE \
+            -priority gatk,bcftools
+        ''' 
 
 rule filter_VQSR_passed:
     input:

@@ -1,13 +1,26 @@
+import sys
 import click
 import asyncio
-from watchdog.watcher import run_process
+from watchdog.watcher import watch_beagle
 
 @click.command()
-@click.argument('command', nargs=-1)
-def cli(command):
+@click.option('--gt')
+@click.option('--out')
+@click.option('--window')
+@click.option('--overlap')
+@click.option('--nthreads')
+def cli(gt,out,window,overlap,nthreads):
     """
         [ WD ] : WatchDog
     """
-    click.echo(f"[ WD ]: Executing the following command: {' '.join(command)}")
-    command_exit_code = asyncio.run(run_process(command))
-    return command_exit_code
+    command_exit_code = asyncio.run(
+        watch_beagle(
+            gt, 
+            out,
+            impute='true',
+            window=window,
+            overlap=overlap,
+            nthreads=nthreads,
+        )
+    )
+    sys.exit(command_exit_code)
