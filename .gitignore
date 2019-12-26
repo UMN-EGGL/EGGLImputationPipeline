@@ -1,4 +1,7 @@
 *.swp
+*.swo
+WatchDog/watchdog/__pycache__/*.pyc
+WatchDog/test
 data
 mccue-lab
 .snakemake
