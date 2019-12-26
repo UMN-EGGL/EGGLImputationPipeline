@@ -23,7 +23,8 @@ contigs = [
    #'NC_009160_3','NC_009161_3','NC_009162_3','NC_009163_3', #chr17-20
    #'NC_009164_3','NC_009165_3','NC_009166_3','NC_009167_3', #chr21-24
    #'NC_009168_3','NC_009169_3','NC_009170_3','NC_009171_3', #chr25-28
-   #'NC_009172_3','NC_009173_3','NC_009174_3',
+   #'NC_009172_3','NC_009173_3',
+    'NC_009174_3',
     'NC_009175_3', #chr29-32    
 
    #'NC_001640_1',                             # Mitochindria
@@ -90,15 +91,18 @@ rule phase_VQSRPassed_vcf:
 
 rule combine_gatk_bcftools_vcfs:
     input:
-        gatk_vcf     = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz'),
-        gatk_idx     = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.tbi'),
-        bcftools_vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz'),
-        bcftools_idx = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.tbi'),
-        fna    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna'),
-        fai    = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai'),
-        fdict  = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
+        gatk_vcf     = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz', keep_local=True),
+        gatk_idx     = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.tbi', keep_local=True),
+        bcftools_vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz', keep_local=True),
+        bcftools_idx = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.tbi', keep_local=True),
+        fna          = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna', keep_local=True),
+        fai          = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai', keep_local=True),
+        fdict        = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict', keep_local=True)
     output:
-        merged_vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz')
+        merged_bare                = temp(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/MERGED_BARE.vcf.gz'),
+        merged_partial_annotated   = temp(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/MERGED_PARTIAL_ANNOTATED.vcf.gz'),
+        merged_fully_annotated     = S3.remote(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz'),
+        merged_fully_annotated_idx = S3.remote(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.idx')
     shell:
         f''' 
         java -jar $GATK3_JAR \
@@ -107,8 +111,18 @@ rule combine_gatk_bcftools_vcfs:
             --variant:gatk {{input.gatk_vcf}} \
             --variant:bcftools {{input.bcftools_vcf}} \
             -genotypeMergeOptions PRIORITIZE \
-            -priority gatk,bcftools
-        | bcftools annotate -X ^INFO/set,^FORMAT/GT -O z -o {{output.merged_vcf}}
+            -priority gatk,bcftools | \
+        bcftools annotate -x ^INFO/set,^FORMAT/GT -Oz -o {{output.merged_bare}}
+        echo "Indexing {{output.merged_bare}}"
+        bcftools index {{output.merged_bare}}
+
+        echo "Adding GATK annotations to {{output.merged_bare}}" 
+        bcftools annotate {{output.merged_bare}} -a {{input.gatk_vcf}} -c INFO/VQSLOD -Oz -o {{output.merged_partial_annotated}}
+        bcftools index {{output.merged_partial_annotated}}
+
+        echo "Addingt BCFTOOLS annotations to {{output.merged_partial_annotated}}"
+        bcftools annotate {{output.merged_partial_annotated}} -a {{input.bcftools_vcf}} -c +INFO/VQSLOD -Oz -o {{output.merged_fully_annotated}} 
+        bcftools index {{output.merged_fully_annotated}} -o {{output.merged_fully_annotated_idx}}
         ''' 
 
 rule filter_VQSR_passed:
