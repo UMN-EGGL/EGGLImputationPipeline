@@ -16,14 +16,14 @@ BUCKET = 'ec3genomes'
 
 contigs = [
     # Autosomes
-    'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
-    'NC_009149_3','NC_009149_3','NC_009150_3','NC_009151_3', #chr5-8
-    'NC_009152_3','NC_009153_3','NC_009154_3','NC_009155_3', #chr9-12
-    'NC_009156_3','NC_009157_3','NC_009158_3','NC_009159_3', #chr13-16
-    'NC_009160_3','NC_009161_3','NC_009162_3','NC_009163_3', #chr17-20
-    'NC_009164_3','NC_009165_3','NC_009166_3','NC_009167_3', #chr21-24
-    'NC_009168_3','NC_009169_3','NC_009170_3','NC_009171_3', #chr25-28
-    'NC_009172_3','NC_009173_3','NC_009174_3',
+   #'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
+   #'NC_009149_3','NC_009149_3','NC_009150_3','NC_009151_3', #chr5-8
+   #'NC_009152_3','NC_009153_3','NC_009154_3','NC_009155_3', #chr9-12
+   #'NC_009156_3','NC_009157_3','NC_009158_3','NC_009159_3', #chr13-16
+   #'NC_009160_3','NC_009161_3','NC_009162_3','NC_009163_3', #chr17-20
+   #'NC_009164_3','NC_009165_3','NC_009166_3','NC_009167_3', #chr21-24
+   #'NC_009168_3','NC_009169_3','NC_009170_3','NC_009171_3', #chr25-28
+   #'NC_009172_3','NC_009173_3','NC_009174_3',
     'NC_009175_3', #chr29-32    
 
    #'NC_001640_1',                             # Mitochindria
@@ -55,17 +55,18 @@ vqsr = [
 #   '99',
 ]
 
-singularity: "gcr.io/minus80/ec3genomes:v0.4.0"
+#singularity: "docker://linkageio/ec3genomes:v0.4.0"
 
 rule all:
     input:
-        #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
+         ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
         # Phased
-        ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
+        #ancient(S3.remote(expand(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz',caller=caller,maf=maf,contig=contigs,fltr=fltr,vqsr=vqsr))),
 
 rule phase_VQSRPassed_vcf:
     input:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz'),
+        idx = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.csi'),
     output:
         vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/{{caller}}/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/phased.vcf.gz'),
     params:
@@ -76,31 +77,16 @@ rule phase_VQSRPassed_vcf:
     resources:
         mem_gb = 50
     threads: 7
-    run:
-        from watchdog import watch_process  
-
-        backoff = False
-        while True:
-                       
-            if backoff:
-                # If we are backing off, we need to filter the SNPs in the bad
-                # window
-
-            else:
-                input_vcf = input.vcf  
-
-            cmd = ' '.split(f'''
-                java -Xmx{params.mem} -jar $BEAGLE_JAR \
-                    gt={input.vcf} \
-                    out={params.prefix} \
-                    impute=true \
-                    nthreads={threads} \
-                    window={params.window} \
-                    overlap={params.overlap}
-            ''')
-
-            
-            
+    shell:
+        '''
+            java -Xmx{params.mem} -jar $BEAGLE_JAR \
+                gt={input.vcf} \
+                out={params.prefix} \
+                impute=true \
+                nthreads={threads} \
+                window={params.window} \
+                overlap={params.overlap}
+        '''
 
 rule combine_gatk_bcftools_vcfs:
     input:
@@ -120,9 +106,9 @@ rule combine_gatk_bcftools_vcfs:
             -R {{input.fna}} \
             --variant:gatk {{input.gatk_vcf}} \
             --variant:bcftools {{input.bcftools_vcf}} \
-            -o {{output.merged_vcf}} \
             -genotypeMergeOptions PRIORITIZE \
             -priority gatk,bcftools
+        | bcftools annotate -X ^INFO/set,^FORMAT/GT -O z -o {{output.merged_vcf}}
         ''' 
 
 rule filter_VQSR_passed:

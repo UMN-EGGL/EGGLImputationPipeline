@@ -1,6 +1,7 @@
 import os
 import re
 import asyncio
+import tempfile
 from asyncio.subprocess import PIPE, STDOUT
 
 
@@ -66,3 +67,29 @@ async def watch_beagle(
     await process.wait()
     # return the code
     return return_code
+
+
+
+def filter_window(input_vcf, window_chrom, window_start, window_end, threshold=0.95):
+    import subprocess
+    new_vcf = tempfile.NamedTemporaryFile('w') 
+    print(f"Creating new VCF: {new_vcf.name}")
+    # Print the header -----------------------------------------------
+    cmd = f'bcftools view {input_vcf} -r {window_chrom}:{0}-{max(0,window_start-1)}'.split(' ')
+    print(cmd)
+    header = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE     
+    )
+    for line in header.communicate()[0].splitlines():
+        print(line.decode(), file=new_vcf, flush=True)
+    # Process the window ---------------------------------------------
+    cmd = f'bcftools view -H {input_vcf} -r {window_chrom}:{window_start}-{window_end}'.split(' ')
+    print(cmd)
+    window = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE     
+    )
+    lines =  [x.decode() for x in window.communicate()[0].splitlines()]
+    # Filter out the lowest x% of VQSLOD scores
+    # [{x:y for x,y in map(lambda x: x.split('='),line.split('\t')[7].split(';'))}  for line in lines]
+    breakpoint()
+    x=1
