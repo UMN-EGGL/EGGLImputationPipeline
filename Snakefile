@@ -15,14 +15,15 @@ BUCKET = 'ec3genomes'
 
 contigs = [
     # Autosomes
-   #'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
-   #'NC_009148_3','NC_009149_3','NC_009150_3','NC_009151_3', #chr5-8
-   #'NC_009152_3','NC_009153_3','NC_009154_3','NC_009155_3', #chr9-12
-   #'NC_009156_3','NC_009157_3','NC_009158_3','NC_009159_3', #chr13-16
-   #'NC_009160_3','NC_009161_3','NC_009162_3','NC_009163_3', #chr17-20
-   #'NC_009164_3','NC_009165_3','NC_009166_3','NC_009167_3', #chr21-24
-   #'NC_009168_3','NC_009169_3','NC_009170_3','NC_009171_3', #chr25-28
-    'NC_009172_3','NC_009173_3','NC_009174_3',
+    'NC_009144_3','NC_009145_3','NC_009146_3','NC_009147_3', #chr1-4
+    'NC_009149_3','NC_009149_3','NC_009150_3','NC_009151_3', #chr5-8
+    'NC_009152_3','NC_009153_3','NC_009154_3','NC_009155_3', #chr9-12
+    'NC_009156_3','NC_009157_3','NC_009158_3','NC_009159_3', #chr13-16
+    'NC_009160_3','NC_009161_3','NC_009162_3','NC_009163_3', #chr17-20
+    'NC_009164_3','NC_009165_3','NC_009166_3','NC_009167_3', #chr21-24
+    'NC_009168_3','NC_009169_3','NC_009170_3','NC_009171_3', #chr25-28
+    'NC_009172_3','NC_009173_3',
+    'NC_009174_3',
     'NC_009175_3', #chr29-32    
 
    #'NC_001640_1',                             # Mitochindria
@@ -89,9 +90,9 @@ rule combine_gatk_bcftools_vcfs:
         gatk_idx     = S3.remote(f'{BUCKET}/data/vcfs/joint/gatk/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.tbi', keep_local=True),
         bcftools_vcf = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz', keep_local=True),
         bcftools_idx = S3.remote(f'{BUCKET}/data/vcfs/joint/bcftools/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/PASS.vcf.gz.tbi', keep_local=True),
-        fna          = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna', keep_local=True),
-        fai          = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai', keep_local=True),
-        fdict        = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict', keep_local=True)
+        fna          = f'data/fna/GCF_002863925.1_EquCab3.0_genomic.fna',
+        fai          = f'data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai',
+        fdict        = f'data/fna/GCF_002863925.1_EquCab3.0_genomic.dict'
     output:
         merged_bare                = temp(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/MERGED_BARE.vcf.gz'),
         merged_partial_annotated   = temp(f'{BUCKET}/data/vcfs/joint/merged/{{fltr}}/{{maf}}/{{contig}}/VQSR{{vqsr}}/MERGED_PARTIAL_ANNOTATED.vcf.gz'),
@@ -110,15 +111,14 @@ rule combine_gatk_bcftools_vcfs:
         echo "Indexing {{output.merged_bare}}"
         bcftools index {{output.merged_bare}}
 
-        echo "Adding GATK annotations to {{output.merged_bare}}"
+        echo "Adding GATK annotations to {{output.merged_bare}}" 
         bcftools annotate {{output.merged_bare}} -a {{input.gatk_vcf}} -c INFO/VQSLOD -Oz -o {{output.merged_partial_annotated}}
         bcftools index {{output.merged_partial_annotated}}
 
-        echo "Addingt BCFTOOLS annotations to {{output.merged_partially_annotated}}"
-        bcftools annotate {{output.merged_partial_annotated}} -a {{input.bcftools_vcf}} -c +INFO/VQSLOD -Oz -o {{output.merged_fully_annotated}}
+        echo "Addingt BCFTOOLS annotations to {{output.merged_partial_annotated}}"
+        bcftools annotate {{output.merged_partial_annotated}} -a {{input.bcftools_vcf}} -c +INFO/VQSLOD -Oz -o {{output.merged_fully_annotated}} 
         bcftools index {{output.merged_fully_annotated}} -o {{output.merged_fully_annotated_idx}}
-        '''
-
+        ''' 
 
 rule filter_VQSR_passed:
     input:
@@ -358,6 +358,22 @@ rule make_snp_lsts:
 #-----------------------------------------------------------------------------#
 #-                            Move Reference Files                           -#
 #-----------------------------------------------------------------------------#
+
+rule download_reference_files:
+    input:
+        fna   = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna'),
+        fai   = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai'),
+        fdict = S3.remote(f'{BUCKET}/data/fna/GCF_002863925.1_EquCab3.0_genomic.dict')
+    output:
+        fna   = f'data/fna/GCF_002863925.1_EquCab3.0_genomic.fna',
+        fai   = f'data/fna/GCF_002863925.1_EquCab3.0_genomic.fna.fai',
+        fdict = f'data/fna/GCF_002863925.1_EquCab3.0_genomic.dict'
+    shell:
+        '''
+	cp {input.fna} {output.fna}
+	cp {input.fai} {output.fai}
+	cp {input.fdict} {output.fdict}
+        '''
 
 rule move_ref_genome_dict:
     input:
