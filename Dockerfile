@@ -50,6 +50,11 @@ RUN apt-get install apt-transport-https ca-certificates gnupg --yes
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
 RUN apt-get update && apt-get install google-cloud-sdk --yes
 
+#install the beagle watchdog program
+
+COPY WatchDog $HOME/.local/src/WatchDog
+RUN cd $HOME/.local/src/WatchDog && pip install -e .
+
 WORKDIR $HOME
 COPY  Snakefile .
 
