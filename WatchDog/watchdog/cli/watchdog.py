@@ -6,14 +6,15 @@ from watchdog.watcher import watch_beagle
 @click.command()
 @click.option('--gt')
 @click.option('--out-prefix')
+@click.option('--ref', default=None)
 @click.option('--window', default=0.05)
 @click.option('--overlap', default=0.005)
 @click.option('--nthreads', default=4)
-@click.option('--timeout',default=10)
+@click.option('--timeout',default=30)
 @click.option('--debug/--no-debug', default=False)
 @click.option('--heap-size', default='50g')
 def cli(
-        gt,out_prefix,window,overlap,
+        gt,out_prefix,ref,window,overlap,
         nthreads,timeout,heap_size,debug
     ):
     """
@@ -29,6 +30,7 @@ def cli(
         watch_beagle(
             gt, 
             out_prefix,
+            ref=ref,
             window=window,
             overlap=overlap,
             nthreads=nthreads,
