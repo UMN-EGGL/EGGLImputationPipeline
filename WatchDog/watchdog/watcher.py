@@ -12,6 +12,7 @@ from .exceptions import PhasingTimeoutError
 async def watch_beagle(
         gt,
         out_prefix,
+        ref=None,
         window=0.05,
         overlap=0.005,
         nthreads=4,
@@ -25,9 +26,10 @@ async def watch_beagle(
     # Loop and try to phase
     while True:
         try:
+            # These should really be class attributes
             phase_success = await phase_vcf(
                 gt=input_vcf, out_prefix=out_prefix, 
-                window=window, overlap=overlap, 
+                ref=ref, window=window, overlap=overlap, 
                 nthreads=nthreads, timeout=timeout,
                 check_every=check_every,
                 heap_size=heap_size
@@ -54,10 +56,11 @@ async def watch_beagle(
 async def phase_vcf(
         gt,
         out_prefix,
+        ref=None,
         window=0.05,
         overlap=0.005,
         nthreads=4,
-        timeout=30, 
+        timeout=20, 
         check_every=5,
         heap_size='50g'
     ):
@@ -74,6 +77,8 @@ async def phase_vcf(
             the prefix string for the output files.
             Will produce {out_prefix}.vcf.gz and 
             {out_prefix}.log
+        ref: (pathlike str to a vcf)
+            The reference VCF, if set, imputation will be done.
         window: float
             The size of the imputation window (in megabases)
         overlap: float
@@ -96,6 +101,8 @@ async def phase_vcf(
         f'window={window}', f'overlap={overlap}',
         f'nthreads={nthreads}'
     ]
+    if ref is not None:
+        cmd.insert(5,f'ref={ref}')
     print(f"[ WD ]: Executing the following command: {' '.join(cmd)}")
     process = await asyncio.create_subprocess_exec(
         *cmd,
@@ -149,7 +156,14 @@ async def phase_vcf(
     # return the code
     return True
 
-def filter_window(input_vcf, window_chrom, window_start, window_end, threshold=0.95):
+def filter_window(
+        input_vcf, 
+        window_chrom, 
+        window_start, 
+        window_end, 
+        threshold=0.95,
+        fltr_field='VQSR'
+    ):
     '''
     Returns a named temp file containing the filtered 
     '''
@@ -182,18 +196,19 @@ def filter_window(input_vcf, window_chrom, window_start, window_end, threshold=0
     )
     lines =  [x for x in window.stdout.strip().split('\n')]
     print(f"[ WD ]: There are {len(lines)} in the window")
-    # Filter out the lowest x% of VQSLOD scores
-    LOD_scores = []
+    # Filter out the lowest x% of scores
+    breakpoint()
+    scores = []
     for line in lines:
         info_fields = line.split('\t')[7].split(';') 
         for k,v in map(lambda x: x.split('='), info_fields):
-            if k == 'VQSLOD':
-                LOD_scores.append(float(v))
-    quantile_cutoff = np.quantile(LOD_scores, 1-threshold)
-    print(f"[ WD ]: Filtering out variants with VQSLOD < {quantile_cutoff}")
+            if k == fltr_field:
+                scores.append(float(v))
+    quantile_cutoff = np.quantile(scores, 1-threshold)
+    print(f"[ WD ]: Filtering out variants with {fltr_field} < {quantile_cutoff}")
     num_filtered  = 0
-    for line,lod in zip(lines,LOD_scores):
-        if lod >= quantile_cutoff:
+    for line,score in zip(lines,scores):
+        if score >= quantile_cutoff:
             print(line, file=new_vcf,flush=True)
         else:
             num_filtered += 1
