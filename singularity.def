@@ -1,0 +1,73 @@
+Bootstrap: docker
+From: ubuntu:19.10
+
+%setup
+    mkdir -p ${SINGULARITY_ROOTFS}/home/.local/src
+
+%files
+    WatchDog /home/WatchDog
+    Snakefile /home/Snakefile 
+
+%environment
+    export HOME=/home/
+    export TZ=Europe/Minsk
+    export PATH="$PATH:$HOME/.local/bin"
+    export BEAGLE_JAR="$HOME/.local/src/beagle.jar"
+    export GATK_LOCAL_JAR="$HOME/.local/src/gatk-4.1.4.1/gatk-package-4.1.4.1-local.jar"
+    export GATK3_JAR="$HOME/.local/src/GenomeAnalysisTK-3.8-1-0-gf15c1c3ef/GenomeAnalysisTK.jar"
+    export PATH="$PATH:$HOME/.conda/bin"
+
+%post
+    # Go home singularity
+    cd /home/.local/src
+    export HOME=/home
+    export PATH=$PATH:$HOME/.local/bin:$HOME/.conda/bin
+
+    # update and install essentials
+    apt-get update && apt-get upgrade --yes
+    apt-get install curl wget \
+    openjdk-8-jre \
+    gcc zlib1g-dev libbz2-dev liblzma-dev \
+    build-essential \
+    unzip --yes
+
+    # install R for the variant recalibrator 
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime
+    echo $TZ > /etc/timezone
+    apt-get install r-cran-tidyverse --yes
+    rm /etc/localtime
+
+    # install bcftools
+    wget https://github.com/samtools/bcftools/releases/download/1.9/bcftools-1.9.tar.bz2 
+    tar xvvf bcftools-1.9.tar.bz2 
+    cd bcftools-1.9 
+    ./configure --prefix=$HOME/.local 
+    make 
+    make install
+    
+    # Install Beagle
+    curl http://faculty.washington.edu/browning/beagle/beagle.21Sep19.ec3.jar \
+        -o $HOME/.local/src/beagle.jar
+
+    # Download and install GATK
+    cd $HOME/.local/src
+    wget https://github.com/broadinstitute/gatk/releases/download/4.1.4.1/gatk-4.1.4.1.zip 
+    unzip -o gatk-4.1.4.1.zip
+    ln -f -s $HOME/.local/src/gatk-4.1.4.1/gatk $HOME/.local/bin/gatk
+
+    # Download and instakk GATK 3.8 (for CombineVariants)
+    cd $HOME/.local/src
+    wget https://storage.googleapis.com/gatk-software/package-archive/gatk/GenomeAnalysisTK-3.8-1-0-gf15c1c3ef.tar.bz2
+    tar xvvf GenomeAnalysisTK-3.8-1-0-gf15c1c3ef.tar.bz2
+
+    # Download and install conda
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    sh Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/.conda
+    # Install snakemake 
+    conda install -c bioconda -c conda-forge snakemake --yes
+    
+    # install gcloud
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+    apt-get install apt-transport-https ca-certificates gnupg --yes
+    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+    apt-get update && apt-get install google-cloud-sdk --yes
