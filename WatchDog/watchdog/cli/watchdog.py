@@ -1,10 +1,10 @@
 import sys
 import click
 import asyncio
-from watchdog.watcher import watch_beagle
+from watchdog.watcher import watcher
 
 @click.command()
-@click.option('--gt')
+@click.option('--gt',type=click.Path(exists=True))
 @click.option('--out-prefix')
 @click.option('--ref', default=None)
 @click.option('--window', default=0.05)
@@ -25,17 +25,15 @@ def cli(
         sys.excepthook = ultratb.FormattedTB(
             mode='Verbose', color_scheme='Linux', call_pdb=1
         )
-
-    command_exit_code = asyncio.run(
-        watch_beagle(
-            gt, 
-            out_prefix,
-            ref=ref,
-            window=window,
-            overlap=overlap,
-            nthreads=nthreads,
-            timeout=timeout,
-            heap_size=heap_size
-        )
+    w = watcher(
+        gt, 
+        out_prefix,
+        ref=ref,
+        window_size=window,
+        overlap=overlap,
+        nthreads=nthreads,
+        timeout=timeout,
+        heap_size=heap_size
     )
+    command_exit_code = asyncio.run(w.run())
     sys.exit(command_exit_code)
