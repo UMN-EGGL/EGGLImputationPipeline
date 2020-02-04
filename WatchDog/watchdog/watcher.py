@@ -1,19 +1,27 @@
 
 import os
 import re
+import sys
+import signal
 import logging
 import asyncio
 import tempfile
 import subprocess
 import numpy as np
+import locuspocus as lp
+
+from collections import defaultdict
 from asyncio.subprocess import PIPE, STDOUT
 
-
-from .exceptions import BeagleTimeoutError
+from .exceptions import (
+        BeagleTimeoutError, 
+        BeagleHeapError
+    )
 
 logging.basicConfig()
 log = logging.getLogger('Watchdog')
 log.setLevel(logging.INFO)
+
 
 class watcher(object):
 
@@ -22,12 +30,15 @@ class watcher(object):
         vcf,
         out_prefix, 
         ref=None,
-        window_size=0.05,
-        overlap=0.005,
+        window_size=0.1,
+        overlap=0.01,
         nthreads=4,
-        heap_size='50g',
+        heap_size='5g',
         timeout=60, 
-        check_every=5,
+        check_every=1,
+        fltr_field='VQSLOD',
+        fltr_field_type=float,
+        fltr_threshold=0.05
     ):
         '''
             Parameters
@@ -51,11 +62,11 @@ class watcher(object):
                 wait on a window before a timeout occurs
             check_every: int
                 The number of seconds to check
-            heap_size: (default: 50g)
+            heap_size: (default: 10g)
                 The size of the java heap. Passed 
                 to the java -Xmx parameter.
-
         '''
+
         log.info("Creating a watcher")
         # Save the original vcf name
         self.input_vcf = vcf
@@ -83,25 +94,52 @@ class watcher(object):
         self.num_target_samples = None
 
         # Window Variables
-        self.cur_window_chromosome = None
+        self.cur_window_chrom = None
         self.cur_window_start = None
         self.cur_window_end = None
-        self.cur_window_num_ref = None
         
-        self.cur_window_num_samples = None
+        self.cur_window_num_ref = None
         self.cur_window_num_markers = None
+        # Filter function variables
+        self.fltr_field = fltr_field
+        self.fltr_field_type = fltr_field_type
+        self.fltr_threshold = fltr_threshold
 
+        # Sub-process variable
+        self.process = None
+        signal.signal(signal.SIGINT, self._sigint_handler)
+
+        # Store information associated with windows
+        self.dropped_loci = []  
+
+    @property
+    def current_vcf(self):
+        try:
+            return self._current_vcf.name
+        except AttributeError as e:
+            return self._current_vcf
+
+    @current_vcf.setter
+    def current_vcf(self,new_value):
+       self._current_vcf = new_value
+
+    def _sigint_handler(self,sig,frame):
+        '''
+            What to do when we get in INTERRUPT signal
+        '''
+        log.info("Killing beagle")
+        if self.process is not None:
+            self.process.kill()
+        sys.exit(1)
 
     @property
     def cur_window(self):
-        return f"{self.cur_window_chromosome}:{self.cur_window_start}-{self.cur_window_end}"
+        return f"{self.cur_window_chrom}:{self.cur_window_start}-{self.cur_window_end}"
 
     async def run(self):
         '''
-        Run the main logic to 
+        Run the main logic to watch beagle 
         '''
-        # set some starting parameters
-        filtered_vcf = None 
         # Loop and try to phase
         while True:
             try:
@@ -111,6 +149,11 @@ class watcher(object):
             except BeagleTimeoutError as e:
                 # filter the current vcf
                 self.filter_window()
+            except BeagleHeapError as e:
+                # increase the heap
+                old_heap_size = int(self.heap_size.replace('g',''))
+                self.heap_size = str(old_heap_size + 10) + 'g'
+
 
     @property
     def beagle_command(self):
@@ -128,6 +171,7 @@ class watcher(object):
             cmd.insert(5,f'ref={self.ref}')
         return cmd
 
+
     async def watch_beagle(self):
         '''
             Attempts to phase/impute a VCF file using BEAGLE.  
@@ -138,7 +182,7 @@ class watcher(object):
         '''
         # Run the BEAGLE command in a subprocess
         log.info(f"[ WD ]: Executing the following command: {' '.join(self.beagle_command)}")
-        process = await asyncio.create_subprocess_exec(
+        self.process = await asyncio.create_subprocess_exec(
             *self.beagle_command,
             stdout=PIPE,
             stderr=PIPE
@@ -147,29 +191,9 @@ class watcher(object):
         while True:
             try:
                 line = await asyncio.wait_for(
-                    process.stdout.readline(), 
+                    self.process.stdout.readline(), 
                     self.check_every
                 )
-            except asyncio.TimeoutError as e:
-                # Add the total amount of time waited
-                self.total_waiting += self.check_every
-                log.info(
-                    f"[ WD ]: TIMED OUT WAITING FOR UPDATE, "
-                    f"HAVE WAITED FOR {self.total_waiting} SECONDS"
-                )
-                if  self.total_waiting >= self.timeout:
-                    # Its timed out
-                    log.info(
-                        f"[ WD ]: BEAGLE TIMED OUT PROCESSING {self.cur_window}"
-                    )
-                    process.kill()
-                    # Remove the temp output files
-                    if os.path.exists(self.out_prefix+'.vcf.gz'):
-                        os.remove(self.out_prefix+'.vcf.gz')
-                    if os.path.exists(self.out_prefix+'.log'):
-                        os.remove(self.out_prefix+'.log')
-                    raise BeagleTimeoutError()
-            else: 
                 # A Line has been produced. Extract any information from it.
                 if not line:
                     break # End of File
@@ -182,100 +206,131 @@ class watcher(object):
                     log.info(f"[ WD ]: {line.strip()}")
                     # continue the loop
                     continue
+            except asyncio.TimeoutError as e:
+                # Add the total amount of time waited
+                self.total_waiting += self.check_every
+                log.info(
+                    f"[ WD ]: TIMED OUT WAITING FOR UPDATE, "
+                    f"HAVE WAITED FOR {self.total_waiting} SECONDS"
+                )
+                if  self.total_waiting >= self.timeout:
+                    # Its timed out
+                    log.info(
+                        f"[ WD ]: BEAGLE TIMED OUT PROCESSING {self.cur_window}"
+                    )
+                    self.process.kill()
+                    # Remove the temp output files
+                    if os.path.exists(self.out_prefix+'.vcf.gz'):
+                        os.remove(self.out_prefix+'.vcf.gz')
+                    if os.path.exists(self.out_prefix+'.log'):
+                        os.remove(self.out_prefix+'.log')
+                    raise BeagleTimeoutError()
+        breakpoint()
         # wait for the child to exit
-        await process.wait()
+        await self.process.wait()
+        self.process = None
         # return the code
         return True
 
     def _parse_current_info(self,line):
         # Extract window infromation
         if line.startswith('Window'):
-            window = re.match('Window \d+i \(([^:]+):(\d+)-(\d+)\)',line)
-            self.cur_window_chromosome = window[1]
-            self.cur_window_start = window[2]
-            self.cur_window_end = window[3]
+            window = re.match('Window \d+ \(([^:]+):(\d+)-(\d+)\)',line)
+            self.cur_window_chrom = window[1]
+            self.cur_window_start = int(window[2])
+            self.cur_window_end = int(window[3])
         elif line.startswith('Reference samples:'):
             num_samples = re.match('^Reference samples:\s+(\d+)$',line)
             self.num_reference_samples = int(num_samples[1])
         elif line.startswith('Study markers:'):
-            num_markers = re.match('^Study markers:\s+(\d+)$',line)
-            self.
-
+            num_markers = re.match('^Study markers:\s+([,\d]+)$',line)
+            self.cur_window_num_markers = int(num_markers[1].replace(',',''))
+        elif line.startswith('ERROR: java.lang.OutOfMemoryError:'):
+            raise BeagleHeapError
         else:
             # The line contains no parseable information
             pass
-            
-        
 
-
-
-
-    def filter_window(
-            self,
-            threshold=0.95,
-            fltr_field='VQSR'
-        ):
+    def filter_window(self):
         '''
             Returns a named temp file containing the filtered VCF. 
         '''
-        new_vcf = tempfile.NamedTemporaryFile('w',suffix='.vcf',delete=True) 
+        filtered_vcf = tempfile.NamedTemporaryFile('w',suffix='.vcf',delete=True) 
+        log.info(f"[ WD ]: Filtering VCF into: {filtered_vcf.name}")
 
-        log.info(f"[ WD ]: Creating new VCF: {new_vcf.name}")
         # Index if not there ---------------------------------------------
-        if not os.path.exists(input_vcf+'.csi'):
-            log.info(f"[ WD ]: Indexing {input_vcf}")
-            cmd = f'bcftools index {input_vcf}'.split(' ')
+        if not os.path.exists(self.current_vcf+'.csi'):
+            log.info(f"[ WD ]: Indexing {self.current_vcf}")
+            cmd = f'bcftools index {self.current_vcf}'.split(' ')
             index = subprocess.run(
                 cmd, capture_output=True
             )  
         # Print the header -----------------------------------------------
-        cmd = f'bcftools view {input_vcf} -r {window_chrom}:{0}-{max(0,window_start-1)}'.split(' ')
+        cmd = f'bcftools view {self.current_vcf} -r {self.cur_window_chrom}:{0}-{max(0,self.cur_window_start-1)}'.split(' ')
         log.info("[ WD ]: Printing header")
         header = subprocess.run(
-            cmd, capture_output=True, encoding='utf-8',text=True
+            cmd, capture_output=True, encoding='utf-8', text=True
         )
         for line in header.stdout.strip().split('\n'):
-            print(line, file=new_vcf, flush=True)
+            print(line, file=filtered_vcf, flush=True)
         # Process the window ---------------------------------------------
-        cmd = f'bcftools view -H {input_vcf} -r {window_chrom}:{window_start}-{window_end}'.split(' ')
-        log.info(f"[ WD ]: Processing window: {window_chrom}:{window_start}-{window_end}")
+        cmd = f'bcftools view -H {self.current_vcf} -r {self.cur_window}'.split(' ')
+        log.info(f"[ WD ]: Processing window: {self.cur_window}")
         window = subprocess.run(
             cmd, capture_output=True, encoding='utf-8',text=True
         )
         lines =  [x for x in window.stdout.strip().split('\n')]
-        log.info(f"[ WD ]: There are {len(lines)} in the window")
         # Filter out the lowest x% of scores
         scores = []
         for line in lines:
             info_fields = line.split('\t')[7].split(';') 
             for k,v in map(lambda x: x.split('='), info_fields):
-                if k == fltr_field:
-                    scores.append(float(v))
-        quantile_cutoff = np.quantile(scores, 1-threshold)
-        log.info(f"[ WD ]: Filtering out variants with {fltr_field} < {quantile_cutoff}")
-        num_filtered  = 0
+                if k == self.fltr_field:
+                    scores.append(self.fltr_field_type(v))
+        # Figure out the threshold for the lowest 5%
+        quantile_cutoff = np.quantile(scores, self.fltr_threshold)
+        log.info(f"[ WD ]: Filtering out the bottom {self.fltr_threshold*100}% of variants")
+        num_dropped = 0
         for line,score in zip(lines,scores):
             if score >= quantile_cutoff:
-                print(line, file=new_vcf,flush=True)
+                # Print the vcf record into the new filtered_vcf file
+                print(line, file=filtered_vcf,flush=True)
             else:
-                num_filtered += 1
-        log.info(f"[ WD ]: Filtered out {num_filtered} variants in window ({100*(num_filtered/len(lines)):.2f}%)")
+                num_dropped += 1
+                # Create a locus object and add to the filtered list
+                v = line.split('\t')[0:8]
+                locus = lp.Locus(
+                    chromosome=v[0],
+                    start=int(v[1]),
+                    end=int(v[1]),
+                    feature_type='SNP',
+                    source=self.input_vcf
+                )
+                # Add a name if available
+                if v[2] != '.':
+                    locus.name = v[2]
+                # Add attrs
+                for k,v in map(lambda x: x.split('='), v[7].split(';')):
+                    locus[k] = v
+                self.dropped_loci.append(locus)
+        log.info(f"[ WD ]: Dropped a total of {num_dropped} SNPs in {self.cur_window}")
+
         # Process the rest ------------------------------------------------
-        cmd = f'bcftools view -H {input_vcf} -r {window_chrom}:{window_end+1}-'.split(' ')
+        cmd = f'bcftools view -H {self.current_vcf} -r {self.cur_window_chrom}:{self.cur_window_end+1}-'.split(' ')
         log.info(f"[ WD ]: Printing out rest of variants")
         header = subprocess.run(
             cmd, capture_output=True, encoding='utf-8',text=True
         )
         for line in header.stdout.strip().split('\n'):
-            print(line, file=new_vcf, flush=True)
+            print(line, file=filtered_vcf, flush=True)
         
         new_bgzip = tempfile.NamedTemporaryFile('w',suffix='.vcf.gz',delete=True)
-        cmd = f'bcftools view {new_vcf.name} -Oz -o {new_bgzip.name}'.split(' ')
-        log.info(f"[ WD ]: compressing {new_vcf.name} into {new_bgzip.name}")
+        cmd = f'bcftools view {filtered_vcf.name} -Oz -o {new_bgzip.name}'.split(' ')
+        log.info(f"[ WD ]: compressing {filtered_vcf.name} into {new_bgzip.name}")
         window = subprocess.run(
             cmd, capture_output=True, encoding='utf-8',text=True
         )
-        log.info(f"[ WD ]: Closing {new_vcf.name}")
-        new_vcf.close()
+        log.info(f"[ WD ]: Closing {filtered_vcf.name}")
+        filtered_vcf.close()
 
-        return new_bgzip
+        self.current_vcf = new_bgzip
