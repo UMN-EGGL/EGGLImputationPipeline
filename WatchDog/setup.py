@@ -62,6 +62,8 @@ setup(
     package_data={"": [""]},
     install_requires=[
         "click >= 7.0",
+        "numpy >= 1.17.3",
+        "locuspocus >= 1.0.2"
     ],
     extras_require={"docs": []},
     include_package_data=True,
