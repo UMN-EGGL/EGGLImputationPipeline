@@ -50,10 +50,15 @@ RUN apt-get install apt-transport-https ca-certificates gnupg --yes
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
 RUN apt-get update && apt-get install google-cloud-sdk --yes
 
-#install the beagle watchdog program
-
+# install the beagle watchdog program
 COPY WatchDog $HOME/.local/src/WatchDog
 RUN cd $HOME/.local/src/WatchDog && pip install -e .
+
+# download and install vcftools 
+RUN wget https://github.com/vcftools/vcftools/releases/download/v0.1.16/vcftools-0.1.16.tar.gz \
+    && tar xvvf vcftools-0.1.16.tar.gz \
+    && ./configure --prefix=$HOME/.local \
+    && make && make install
 
 WORKDIR $HOME
 COPY  Snakefile .
