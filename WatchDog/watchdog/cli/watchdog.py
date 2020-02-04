@@ -1,6 +1,7 @@
 import sys
 import click
 import asyncio
+import shutil
 from watchdog.watcher import watcher
 
 @click.command()
@@ -20,6 +21,11 @@ def cli(
     """
         [ WD ] : WatchDog
     """
+    # Check for bcftools
+    if shutil.which('bcftools') is None:
+        click.print("bcftools needs to be installed to use this program")
+        sys.exit(1)
+
     if debug:
         from IPython.core import ultratb
         sys.excepthook = ultratb.FormattedTB(
