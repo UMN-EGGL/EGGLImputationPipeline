@@ -225,7 +225,6 @@ class watcher(object):
                     if os.path.exists(self.out_prefix+'.log'):
                         os.remove(self.out_prefix+'.log')
                     raise BeagleTimeoutError()
-        breakpoint()
         # wait for the child to exit
         await self.process.wait()
         self.process = None
@@ -251,6 +250,42 @@ class watcher(object):
             # The line contains no parseable information
             pass
 
+
+    def _index_current_vcf(self):
+        if not os.path.exists(self.current_vcf+'.csi'):
+            log.info(f"[ WD ]: Indexing {self.current_vcf}")
+            cmd = f'bcftools index {self.current_vcf}'.split(' ')
+            index = subprocess.run(
+                cmd, capture_output=True
+            )  
+
+    async def current_vcf_lines(self,chromosome,start,stop,header=False):
+        '''
+            Asynchronoulsy yields lines of the current VCF file based on 
+            base pair positions.
+            >>> x = watcher(...)
+            # get the lines 
+            >>> [l async for l in x.current_vcf_lines('chr1',1,1000,header=True)]
+
+        '''
+        # In order to use bcftools, the VCF file needs to be indexed
+        self._index_current_vcf()
+        if not header:
+            header_flag = '-H'
+        else:
+            header_flag = ''
+        # Extract the header for the VCF file
+        cmd = f'bcftools view {header_flag} {self.current_vcf} -r {chromosome}:{start}-{stop}'
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        while not proc.stdout.at_eof():
+            line = await proc.stdout.readline()
+            yield line.decode('utf-8').strip()
+
+
     def filter_window(self):
         '''
             Returns a named temp file containing the filtered VCF. 
@@ -258,13 +293,16 @@ class watcher(object):
         filtered_vcf = tempfile.NamedTemporaryFile('w',suffix='.vcf',delete=True) 
         log.info(f"[ WD ]: Filtering VCF into: {filtered_vcf.name}")
 
-        # Index if not there ---------------------------------------------
-        if not os.path.exists(self.current_vcf+'.csi'):
-            log.info(f"[ WD ]: Indexing {self.current_vcf}")
-            cmd = f'bcftools index {self.current_vcf}'.split(' ')
-            index = subprocess.run(
-                cmd, capture_output=True
-            )  
+
+        # Print the troublesome window into its own temp VCF
+        cmd = f'bcftools view {self.current_vcf} -r {self.cur_window}'.split(' ')
+        log.info(f"[ WD ]: Extracting: {self.cur_window}")
+        window = subprocess.run(
+            cmd, capture_output=True, encoding='utf-8',text=True
+        )
+        for line in header.stdout.strip().split('\n'):
+            print(line, file=filtered_vcf, flush=True)
+
         # Print the header -----------------------------------------------
         cmd = f'bcftools view {self.current_vcf} -r {self.cur_window_chrom}:{0}-{max(0,self.cur_window_start-1)}'.split(' ')
         log.info("[ WD ]: Printing header")
