@@ -2,27 +2,16 @@ Bootstrap: docker
 From: ubuntu:19.10
 
 %setup
-    mkdir -p ${SINGULARITY_ROOTFS}/home/.local/src
+    mkdir -p ${SINGULARITY_ROOTFS}/opt/EGGLImpute/src
+    mkdir -p ${SINGULARITY_ROOTFS}/opt/EGGLImpute/share
+    mkdir -p ${SINGULARITY_ROOTFS}/opt/EGGLImpute/bin
 
 %files
-    WatchDog /home/WatchDog
-    Snakefile /home/Snakefile 
-
-%environment
-    export HOME=/home/
-    export TZ=Europe/Minsk
-    export PATH="$PATH:$HOME/.local/bin"
-    export BEAGLE_JAR="$HOME/.local/src/beagle.jar"
-    export GATK_LOCAL_JAR="$HOME/.local/src/gatk-4.1.4.1/gatk-package-4.1.4.1-local.jar"
-    export GATK3_JAR="$HOME/.local/src/GenomeAnalysisTK-3.8-1-0-gf15c1c3ef/GenomeAnalysisTK.jar"
-    export PATH="$PATH:$HOME/.conda/bin"
+    WatchDog /opt/WatchDog
 
 %post
-    # Go home singularity
-    cd /home/.local/src
-    export HOME=/home
-    export PATH=$PATH:$HOME/.local/bin:$HOME/.conda/bin
-
+    # Set
+    export OPTDIR="/opt/EGGLImpute"
     # update and install essentials
     apt-get update && apt-get upgrade --yes
     apt-get install curl wget \
@@ -37,37 +26,50 @@ From: ubuntu:19.10
     apt-get install r-cran-tidyverse --yes
     rm /etc/localtime
 
-    # install bcftools
+    # install bcftools (system wide)
     wget https://github.com/samtools/bcftools/releases/download/1.9/bcftools-1.9.tar.bz2 
     tar xvvf bcftools-1.9.tar.bz2 
     cd bcftools-1.9 
-    ./configure --prefix=$HOME/.local 
+    ./configure 
     make 
     make install
     
     # Install Beagle
     curl http://faculty.washington.edu/browning/beagle/beagle.21Sep19.ec3.jar \
-        -o $HOME/.local/src/beagle.jar
+        -o $OPTDIR/src/beagle.jar
 
     # Download and install GATK
-    cd $HOME/.local/src
+    cd $OPTDIR/src
     wget https://github.com/broadinstitute/gatk/releases/download/4.1.4.1/gatk-4.1.4.1.zip 
     unzip -o gatk-4.1.4.1.zip
-    ln -f -s $HOME/.local/src/gatk-4.1.4.1/gatk $HOME/.local/bin/gatk
+    ln -f -s $OPTDIR/gatk-4.1.4.1/gatk $OPTDIR/bin/gatk
 
     # Download and instakk GATK 3.8 (for CombineVariants)
-    cd $HOME/.local/src
+    cd $OPTDIR/src
     wget https://storage.googleapis.com/gatk-software/package-archive/gatk/GenomeAnalysisTK-3.8-1-0-gf15c1c3ef.tar.bz2
     tar xvvf GenomeAnalysisTK-3.8-1-0-gf15c1c3ef.tar.bz2
 
     # Download and install conda
+    cd $OPTDIR/src
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-    sh Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/.conda
+    sh Miniconda3-latest-Linux-x86_64.sh -b -p /opt/conda
+    export PATH="$PATH:/opt/conda/bin"
+
     # Install snakemake 
     conda install -c bioconda -c conda-forge snakemake --yes
     
-    # install gcloud
-    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-    apt-get install apt-transport-https ca-certificates gnupg --yes
-    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
-    apt-get update && apt-get install google-cloud-sdk --yes
+    # Install MinIO
+    cd $OPTDIR/bin
+    wget https://dl.min.io/client/mc/release/linux-amd64/mc
+    chmod +x mc
+    
+%environment
+    # These are set at container runtime
+    export TZ=Europe/Minsk
+    export OPTDIR="/opt/EGGLImpute"
+    export PATH="$PATH:$OPTDIR/bin"
+    export BEAGLE_JAR="$OPTDIR/src/beagle.jar"
+    export GATK_LOCAL_JAR="$OPTDIR/src/gatk-4.1.4.1/gatk-package-4.1.4.1-local.jar"
+    export GATK3_JAR="$OPTDIR/src/GenomeAnalysisTK-3.8-1-0-gf15c1c3ef/GenomeAnalysisTK.jar"
+    export PATH="$PATH:/opt/conda/bin"
+
