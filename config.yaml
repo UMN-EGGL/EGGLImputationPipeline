@@ -1,4 +1,4 @@
-BUCKET : ec3genomes
+bucket : ec3genomes
 
 samples : [ 
     'A1543', #'A2068', 'A2071','A2085', 'A4416', 'A5659', 'A5964', 'ADM9', 'ADR419', 'ADR420', 'ADR421', 'ADR422', 'ADR423', 'ADR424', 'ADR425', 'ARAB0016A', 'ARAB0017A', 'ARAB0018A', 'ARAB0019A', 
