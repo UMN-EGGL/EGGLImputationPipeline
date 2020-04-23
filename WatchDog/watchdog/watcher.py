@@ -148,7 +148,7 @@ class watcher(object):
                     break
             except BeagleTimeoutError as e:
                 # filter the current vcf
-                self.filter_window()
+                await self.filter_window()
             except BeagleHeapError as e:
                 # increase the heap
                 old_heap_size = int(self.heap_size.replace('g',''))
@@ -252,6 +252,9 @@ class watcher(object):
 
 
     def _index_current_vcf(self):
+        '''
+            A convenience method to index the current VCF file
+        '''
         if not os.path.exists(self.current_vcf+'.csi'):
             log.info(f"[ WD ]: Indexing {self.current_vcf}")
             cmd = f'bcftools index {self.current_vcf}'.split(' ')
@@ -259,7 +262,13 @@ class watcher(object):
                 cmd, capture_output=True
             )  
 
-    async def current_vcf_lines(self,chromosome,start,stop,header=False):
+    async def current_vcf_lines(
+        self,
+        chromosome=None,
+        start=None,
+        end=None,
+        header=False
+    ):
         '''
             Asynchronoulsy yields lines of the current VCF file based on 
             base pair positions.
@@ -268,6 +277,15 @@ class watcher(object):
             >>> [l async for l in x.current_vcf_lines('chr1',1,1000,header=True)]
 
         '''
+        # If not specified, assume current window
+        if chromosome is None:
+            chromosome = self.cur_window_chrom
+        if start is None:
+            start = self.cur_window_start
+        if end is None:
+            end = self.cur_window_end
+        # make sure start is positive
+        start = max(0,start)
         # In order to use bcftools, the VCF file needs to be indexed
         self._index_current_vcf()
         if not header:
@@ -275,7 +293,7 @@ class watcher(object):
         else:
             header_flag = ''
         # Extract the header for the VCF file
-        cmd = f'bcftools view {header_flag} {self.current_vcf} -r {chromosome}:{start}-{stop}'
+        cmd = f'bcftools view {header_flag} {self.current_vcf} -r {chromosome}:{start}-{end}'
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -283,41 +301,22 @@ class watcher(object):
         )
         while not proc.stdout.at_eof():
             line = await proc.stdout.readline()
-            yield line.decode('utf-8').strip()
+            line = line.decode('utf-8').strip()
+            if line != '':
+                yield line 
 
-
-    def filter_window(self):
+    async def filter_window(self):
         '''
             Returns a named temp file containing the filtered VCF. 
         '''
         filtered_vcf = tempfile.NamedTemporaryFile('w',suffix='.vcf',delete=True) 
         log.info(f"[ WD ]: Filtering VCF into: {filtered_vcf.name}")
 
-
-        # Print the troublesome window into its own temp VCF
-        cmd = f'bcftools view {self.current_vcf} -r {self.cur_window}'.split(' ')
-        log.info(f"[ WD ]: Extracting: {self.cur_window}")
-        window = subprocess.run(
-            cmd, capture_output=True, encoding='utf-8',text=True
-        )
-        for line in header.stdout.strip().split('\n'):
+        # print the header and all SNPs up to the window 
+        async for line in self.current_vcf_lines(end=self.cur_window_start-1, header=True):
             print(line, file=filtered_vcf, flush=True)
 
-        # Print the header -----------------------------------------------
-        cmd = f'bcftools view {self.current_vcf} -r {self.cur_window_chrom}:{0}-{max(0,self.cur_window_start-1)}'.split(' ')
-        log.info("[ WD ]: Printing header")
-        header = subprocess.run(
-            cmd, capture_output=True, encoding='utf-8', text=True
-        )
-        for line in header.stdout.strip().split('\n'):
-            print(line, file=filtered_vcf, flush=True)
-        # Process the window ---------------------------------------------
-        cmd = f'bcftools view -H {self.current_vcf} -r {self.cur_window}'.split(' ')
-        log.info(f"[ WD ]: Processing window: {self.cur_window}")
-        window = subprocess.run(
-            cmd, capture_output=True, encoding='utf-8',text=True
-        )
-        lines =  [x for x in window.stdout.strip().split('\n')]
+        lines =  [l async for l in self.current_vcf_lines()]
         # Filter out the lowest x% of scores
         scores = []
         for line in lines:
@@ -351,15 +350,11 @@ class watcher(object):
                 for k,v in map(lambda x: x.split('='), v[7].split(';')):
                     locus[k] = v
                 self.dropped_loci.append(locus)
-        log.info(f"[ WD ]: Dropped a total of {num_dropped} SNPs in {self.cur_window}")
+        log.info(f"[ WD ]: Dropped a total of {num_dropped} of {len(lines)} SNPs in {self.cur_window}")
 
+        log.info(f"[ WD ]: Printing the rest of SNPs")
         # Process the rest ------------------------------------------------
-        cmd = f'bcftools view -H {self.current_vcf} -r {self.cur_window_chrom}:{self.cur_window_end+1}-'.split(' ')
-        log.info(f"[ WD ]: Printing out rest of variants")
-        header = subprocess.run(
-            cmd, capture_output=True, encoding='utf-8',text=True
-        )
-        for line in header.stdout.strip().split('\n'):
+        async for line in self.current_vcf_lines(start=self.cur_window_end+1,end=''):
             print(line, file=filtered_vcf, flush=True)
         
         new_bgzip = tempfile.NamedTemporaryFile('w',suffix='.vcf.gz',delete=True)
