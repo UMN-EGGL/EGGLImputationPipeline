@@ -29,10 +29,10 @@ setup(
     name="watchdog",
     version=find_version("watchdog", "__init__.py"),  # +'-dev3',
     description="Watch Beagle",
-    url="http://linkage.io",
+    url="https://github.com/LinkageIO/Watchdog",
     author="Rob Schaefer",
     author_email="rob@linkage.io",
-    license="Copyright Linkage Analytics 2016-2018. Available under the MIT License",
+    license="Copyright Rob Schaefer 2020. Available under the MIT License",
     classifiers=[
         # How mature is this project? Common values are
         #   3 - Alpha
@@ -46,9 +46,7 @@ setup(
         "License :: OSI Approved :: MIT License",
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
     ],
     keywords="watch beagle impute",
     project_urls={

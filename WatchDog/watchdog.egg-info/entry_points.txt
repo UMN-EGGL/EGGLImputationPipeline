@@ -1,4 +1,0 @@
-
-        [console_scripts]
-        watchdog=watchdog.cli.watchdog:cli
-    
