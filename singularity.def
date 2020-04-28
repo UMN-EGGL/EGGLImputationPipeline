@@ -42,7 +42,7 @@ From: ubuntu:19.10
     cd $OPTDIR/src
     wget https://github.com/broadinstitute/gatk/releases/download/4.1.4.1/gatk-4.1.4.1.zip 
     unzip -o gatk-4.1.4.1.zip
-    ln -f -s $OPTDIR/gatk-4.1.4.1/gatk $OPTDIR/bin/gatk
+    ln -f -s $OPTDIR/src/gatk-4.1.4.1/gatk $OPTDIR/bin/gatk
 
     # Download and instakk GATK 3.8 (for CombineVariants)
     cd $OPTDIR/src
