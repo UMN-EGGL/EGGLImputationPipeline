@@ -1,4 +1,5 @@
 bucket : egglimpute
+tmp_dir: /scratch/tmp
 
 samples : [ 
     'A1543', #'A2068', 'A2071','A2085', 'A4416', 'A5659', 'A5964', 'ADM9', 'ADR419', 'ADR420', 'ADR421', 'ADR422', 'ADR423', 'ADR424', 'ADR425', 'ARAB0016A', 'ARAB0017A', 'ARAB0018A', 'ARAB0019A', 
@@ -38,7 +39,7 @@ samples : [
 
 contigs: 
     # Autosomes
-    - NC_009144_3 # chr1 
+   #- NC_009144_3 # chr1 
    #- NC_009145_3 # chr2
    #- NC_009146_3 # chr3
    #- NC_009147_3 # chr4
@@ -62,13 +63,13 @@ contigs:
    #- NC_009165_3 # chr22
    #- NC_009166_3 # chr23
    #- NC_009167_3 # chr24
-   #- NC_009168_3 # chr25
-   #- NC_009169_3 # chr26
-   #- NC_009170_3 # chr27
-   #- NC_009171_3 # chr28
-   #- NC_009172_3 # chr29
-   #- NC_009173_3 # chr30
-   #- NC_009174_3 # chr31
+    - NC_009168_3 # chr25
+    - NC_009169_3 # chr26
+    - NC_009170_3 # chr27
+    - NC_009171_3 # chr28
+    - NC_009172_3 # chr29
+    - NC_009173_3 # chr30
+    - NC_009174_3 # chr31
    #- NC_009175_3 # chrX
 
    #- NC_001640_1 # Mitochindria
@@ -76,7 +77,7 @@ contigs:
    
 caller:
     - gatk
-#   - bcftools
+    - bcftools
 
 maf:
 #   - MAF01
