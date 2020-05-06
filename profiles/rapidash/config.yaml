@@ -1,0 +1,5 @@
+cores: 10
+keep-going: true
+resources: 
+  - disk_gb=1200 
+  - mem_gb=110
