@@ -2,7 +2,7 @@ bucket : egglimpute
 tmp_dir: /scratch/tmp
 
 samples : [ 
-    'A1543', #'A2068', 'A2071','A2085', 'A4416', 'A5659', 'A5964', 'ADM9', 'ADR419', 'ADR420', 'ADR421', 'ADR422', 'ADR423', 'ADR424', 'ADR425', 'ARAB0016A', 'ARAB0017A', 'ARAB0018A', 'ARAB0019A', 
+    'A1543', 'A2068', 'A2071','A2085', 'A4416', 'A5659', 'A5964', 'ADM9', 'ADR419', 'ADR420', 'ADR421', 'ADR422', 'ADR423', 'ADR424', 'ADR425', 'ARAB0016A', 'ARAB0017A', 'ARAB0018A', 'ARAB0019A', 
    #'ARAB0020A', 'ARAB0034A', 'ARAB0035A', 'ARAB0036A', 'ARAB0132A', 'ARAB0133A', 'ARAB0134A', 'ARAB0135A', 'ARAB0136A', 'ARAB0141A', 'BAVA0183A', 'BROOKS2174', 'BROOKS3147', 'BROOKS3148', 'BW01', 
    #'CLDB65664', 'CLDB65665', 'CLDB65666', 'CON15', 'CON26', 'CON3', 'CON40', 'CUTR0137A', 'CUTR0138A', 'ERR1397962', 'ERR1397965', 'ERR1527951', 'ERR1527966', 'ERR1527967', 'ERR1527968', 'ERR1527969', 
    #'ERR1527970', 'ERR1527972', 'ERR1545178', 'ERR1545179', 'ERR1545180', 'ERR1545181', 'ERR1545182', 'ERR1545187', 'ERR1545188', 'ERR1545189', 'ERR1545190', 'ERR793393', 'ERR863167', 'ERR868003', 
@@ -39,39 +39,46 @@ samples : [
 
 contigs: 
     # Autosomes
-   #- NC_009144_3 # chr1 
-   #- NC_009145_3 # chr2
-   #- NC_009146_3 # chr3
-   #- NC_009147_3 # chr4
-   #- NC_009148_3 # chr5
-   #- NC_009149_3 # chr6
-   #- NC_009150_3 # chr7
-   #- NC_009151_3 # chr8
-   #- NC_009152_3 # chr9
-   #- NC_009153_3 # chr10
-   #- NC_009154_3 # chr11
-   #- NC_009155_3 # chr12
-   #- NC_009156_3 # chr13
-   #- NC_009157_3 # chr14
-   #- NC_009158_3 # chr15
-   #- NC_009159_3 # chr16
-   #- NC_009160_3 # chr17
-   #- NC_009161_3 # chr18
-   #- NC_009162_3 # chr19
-   #- NC_009163_3 # chr20
-   #- NC_009164_3 # chr21
-   #- NC_009165_3 # chr22
-   #- NC_009166_3 # chr23
-   #- NC_009167_3 # chr24
+    - NC_009144_3 # chr1 
+    - NC_009145_3 # chr2
+    - NC_009146_3 # chr3
+    - NC_009147_3 # chr4
+    - NC_009148_3 # chr5
+    
+    - NC_009149_3 # chr6
+    - NC_009150_3 # chr7
+    - NC_009151_3 # chr8
+    - NC_009152_3 # chr9
+    - NC_009153_3 # chr10
+    
+    - NC_009154_3 # chr11
+    - NC_009155_3 # chr12
+    - NC_009156_3 # chr13
+    - NC_009157_3 # chr14
+    - NC_009158_3 # chr15
+    
+    - NC_009159_3 # chr16
+    - NC_009160_3 # chr17
+    - NC_009161_3 # chr18
+    - NC_009162_3 # chr19
+    - NC_009163_3 # chr20
+    
+    - NC_009164_3 # chr21
+    - NC_009165_3 # chr22
+    - NC_009166_3 # chr23
+    - NC_009167_3 # chr24
     - NC_009168_3 # chr25
+    
     - NC_009169_3 # chr26
     - NC_009170_3 # chr27
     - NC_009171_3 # chr28
     - NC_009172_3 # chr29
     - NC_009173_3 # chr30
-    - NC_009174_3 # chr31
-   #- NC_009175_3 # chrX
 
+    - NC_009174_3 # chr31
+    - NC_009175_3 # chrX
+
+    # Other somes
    #- NC_001640_1 # Mitochindria
    #- unplaced    # Unplaced/Chrunk
    
