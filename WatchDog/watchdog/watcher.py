@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import gzip
 import signal
 import logging
 import asyncio
@@ -22,8 +23,7 @@ logging.basicConfig()
 log = logging.getLogger('Watchdog')
 log.setLevel(logging.INFO)
 
-
-class watcher(object):
+class Watcher(object):
 
     def __init__(
         self,
@@ -38,7 +38,9 @@ class watcher(object):
         check_every=1,
         fltr_field='VQSLOD',
         fltr_field_type=float,
-        fltr_threshold=0.05
+        fltr_threshold=0.05,
+        locuspocus_name=None,
+        locuspocus_basedir=None
     ):
         '''
             Parameters
@@ -110,7 +112,11 @@ class watcher(object):
         signal.signal(signal.SIGINT, self._sigint_handler)
 
         # Store information associated with windows
-        self.dropped_loci = []  
+        if locuspocus_name is not None:
+            self.loci = lp.Loci(
+                locuspocus_name,
+                basedir=locuspocus_basedir
+            )
 
     @property
     def current_vcf(self):
@@ -121,7 +127,26 @@ class watcher(object):
 
     @current_vcf.setter
     def current_vcf(self,new_value):
-       self._current_vcf = new_value
+        # get the filename
+        try:
+            filename = new_value.name
+        except AttributeError as e:
+            filename = new_value
+        # auto-compress VCF files
+        if not filename.endswith('.gz'):
+            new_bgzip = tempfile.NamedTemporaryFile('w',suffix='.vcf.gz',delete=True)
+            cmd = f'bcftools view {filename} -Oz -o {new_bgzip.name}'.split(' ')
+            log.info(f"[ WD ]: compressing {filename} into {new_bgzip.name}")
+            window = subprocess.run(
+                cmd, capture_output=True, encoding='utf-8',text=True
+            )
+            log.info(f"[ WD ]: Closing {filename}")
+        else:
+            new_bgzip = new_value
+
+        self._current_vcf = new_bgzip
+        # In order to use bcftools, the VCF file needs to be indexed
+        self._index_current_vcf()
 
     def _sigint_handler(self,sig,frame):
         '''
@@ -138,7 +163,7 @@ class watcher(object):
 
     async def run(self):
         '''
-        Run the main logic to watch beagle 
+            Run the main logic to watch beagle 
         '''
         # Loop and try to phase
         while True:
@@ -153,7 +178,6 @@ class watcher(object):
                 # increase the heap
                 old_heap_size = int(self.heap_size.replace('g',''))
                 self.heap_size = str(old_heap_size + 10) + 'g'
-
 
     @property
     def beagle_command(self):
@@ -250,7 +274,6 @@ class watcher(object):
             # The line contains no parseable information
             pass
 
-
     def _index_current_vcf(self):
         '''
             A convenience method to index the current VCF file
@@ -286,14 +309,13 @@ class watcher(object):
             end = self.cur_window_end
         # make sure start is positive
         start = max(0,start)
-        # In order to use bcftools, the VCF file needs to be indexed
-        self._index_current_vcf()
         if not header:
             header_flag = '-H'
         else:
             header_flag = ''
         # Extract the header for the VCF file
         cmd = f'bcftools view {header_flag} {self.current_vcf} -r {chromosome}:{start}-{end}'
+        log.info(f'[ WD ]: Executing: {cmd}')
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -305,33 +327,40 @@ class watcher(object):
             if line != '':
                 yield line 
 
-    async def filter_window(self):
+    async def split_out_current_window(self):
         '''
-            Returns a named temp file containing the filtered VCF. 
+            Split out the current window and filter out the lowest
+            scores SNPs based on self.fltr_threshold
+
+            Returns
+            -------
+            A NamedTemporaryFile containing passing SNPs from current window
         '''
-        filtered_vcf = tempfile.NamedTemporaryFile('w',suffix='.vcf',delete=True) 
-        log.info(f"[ WD ]: Filtering VCF into: {filtered_vcf.name}")
-
-        # print the header and all SNPs up to the window 
-        async for line in self.current_vcf_lines(end=self.cur_window_start-1, header=True):
-            print(line, file=filtered_vcf, flush=True)
-
-        lines =  [l async for l in self.current_vcf_lines()]
+        # Create a temp file to store the new VCF SNPs
+        bad_window_vcf = tempfile.NamedTemporaryFile('w',suffix='.vcf',delete=True) 
         # Filter out the lowest x% of scores
         scores = []
-        for line in lines:
-            info_fields = line.split('\t')[7].split(';') 
-            for k,v in map(lambda x: x.split('='), info_fields):
-                if k == self.fltr_field:
-                    scores.append(self.fltr_field_type(v))
-        # Figure out the threshold for the lowest 5%
+        lines = []
+        # pull out SNPs in the current window along with their scores
+        for line in [l async for l in self.current_vcf_lines(header=True)]:
+            if line.startswith('#'):
+                print(line,file=bad_window_vcf,flush=True)
+            else:
+                lines.append(line)
+                info_fields = line.split('\t')[7].split(';') 
+                for k,v in map(lambda x: x.split('='), info_fields):
+                    if k == self.fltr_field:
+                        scores.append(self.fltr_field_type(v))
+        # Figure out the threshold for the lowest X%
         quantile_cutoff = np.quantile(scores, self.fltr_threshold)
         log.info(f"[ WD ]: Filtering out the bottom {self.fltr_threshold*100}% of variants")
         num_dropped = 0
+        # Filter out the lowest X percent of SNPs and add filtered out SNPs
+        # as Locus objects to self.dropped_loci
         for line,score in zip(lines,scores):
             if score >= quantile_cutoff:
                 # Print the vcf record into the new filtered_vcf file
-                print(line, file=filtered_vcf,flush=True)
+                print(line, file=bad_window_vcf,flush=True)
             else:
                 num_dropped += 1
                 # Create a locus object and add to the filtered list
@@ -349,21 +378,54 @@ class watcher(object):
                 # Add attrs
                 for k,v in map(lambda x: x.split('='), v[7].split(';')):
                     locus[k] = v
-                self.dropped_loci.append(locus)
+                self.loci.add_locus(locus)
         log.info(f"[ WD ]: Dropped a total of {num_dropped} of {len(lines)} SNPs in {self.cur_window}")
+
+        return bad_window_vcf
+
+    async def filter_window(self):
+        '''
+            Returns a named temp file containing the filtered VCF. 
+        '''
+        filtered_vcf = tempfile.NamedTemporaryFile('w',suffix='.vcf',delete=True) 
+        log.info(f"[ WD ]: Filtering VCF into: {filtered_vcf.name}")
+
+        old_vcf = self._current_vcf
+        # Create loop to filter down the trouble window
+        while True:
+            # new VCF with lowest 5% of SNPs filtered out
+            self.current_vcf = await self.split_out_current_window()
+            try:
+                phase_success = await self.watch_beagle()
+                if phase_success:
+                    break
+            except BeagleTimeoutError as e:
+                # filter the current vcf
+                continue
+            except BeagleHeapError as e:
+                # increase the heap
+                old_heap_size = int(self.heap_size.replace('g',''))
+                self.heap_size = str(old_heap_size + 10) + 'g'
+        
+        good_window = self._current_vcf
+        self.current_vcf = old_vcf
+        log.info(f"[ WD ]: Printing SNPs up to troublesome window")
+        # print the header and all SNPs up to the window 
+        async for line in self.current_vcf_lines(end=self.cur_window_start-1, header=True):
+            print(line, file=filtered_vcf, flush=True)
+        
+        log.info(f"[ WD ]: Printing goods SNPs within troublesome window")
+        # print out the SNPs in the good window
+        with gzip.open(good_window.name,'rt') as IN:
+            for line in IN:
+                if line.startswith('#'):
+                    continue
+                else:
+                    print(line, file=filtered_vcf, flush=True)
 
         log.info(f"[ WD ]: Printing the rest of SNPs")
         # Process the rest ------------------------------------------------
         async for line in self.current_vcf_lines(start=self.cur_window_end+1,end=''):
             print(line, file=filtered_vcf, flush=True)
         
-        new_bgzip = tempfile.NamedTemporaryFile('w',suffix='.vcf.gz',delete=True)
-        cmd = f'bcftools view {filtered_vcf.name} -Oz -o {new_bgzip.name}'.split(' ')
-        log.info(f"[ WD ]: compressing {filtered_vcf.name} into {new_bgzip.name}")
-        window = subprocess.run(
-            cmd, capture_output=True, encoding='utf-8',text=True
-        )
-        log.info(f"[ WD ]: Closing {filtered_vcf.name}")
-        filtered_vcf.close()
-
-        self.current_vcf = new_bgzip
+        self.current_vcf = filtered_vcf
