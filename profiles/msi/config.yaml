@@ -1,0 +1,7 @@
+cluster: "pbs-submit.py"
+cluster-status: "pbs-status.py"
+jobscript: "pbs-jobscript.sh"
+jobs: 100
+immediate-submit: false
+verbose: true
+notemp: true 
